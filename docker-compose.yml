@@ -1,5 +1,5 @@
-services:
-  db:
+services: #all the images to be used and their details
+  db: #postgres
     image: postgres:16
     container_name: routing-db
     restart: unless-stopped
@@ -19,7 +19,7 @@ services:
       timeout: 5s
       retries: 5
 
-  pgadmin:
+  pgadmin: #pgadmin
     image: dpage/pgadmin4:8
     container_name: routing-pgadmin
     restart: unless-stopped
@@ -36,3 +36,4 @@ services:
 
 volumes:
   postgres_data:
+#to be run in detack mode only..default networkcreated 
