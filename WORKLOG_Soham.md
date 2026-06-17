@@ -1,5 +1,7 @@
 # Internship Work Log
 
+Total hours: 15.5
+
 ## 09/06/2026
 
 Hours: 4.0
@@ -50,3 +52,17 @@ Tasks:
 
 Status:
 - All stress tests passed
+
+## 16/06/2026
+
+Hours: 1.5
+
+Status:
+- Docker & PostgreSQL setup completed
+- Database layer configured
+- FastAPI startup verified
+- DB authentication issue under investigation
+
+Next:
+- Fix DB connection
+- Continue API setup
