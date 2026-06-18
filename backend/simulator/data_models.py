@@ -1,4 +1,4 @@
-#added docstrings for easier conversion to json format
+#added docstrings for easier conversion to json format and helpful for future reference
 from dataclasses import dataclass, asdict
 from typing import List, Dict, Any
 

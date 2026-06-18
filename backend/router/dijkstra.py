@@ -1,6 +1,5 @@
 """
 Dijkstra's algorithm, step by step:
-
 1. Build an adjacency list from the current NetworkState.
 2. Start at the source node with cost 0.
 3. Keep a min-heap of the cheapest frontier paths seen so far.
@@ -10,7 +9,12 @@ Dijkstra's algorithm, step by step:
 6. Stop when the destination is reached, then reconstruct the path by walking
    backward through the parent map.
 
-Dijkstra works well here because all link costs are non-negative.
+Dijkstra works well here because all link costs are non-negative
+(latency * congestion penalty can never be negative).
+
+Time complexity: O((V + E) log V), where V = number of routers and
+E = number of links. Each node is pushed/popped from the heap at most
+once per incoming edge, and each heap operation costs O(log V).
 """
 
 import heapq
@@ -28,6 +32,7 @@ def find_route(state: NetworkState, src: str, dst: str) -> RoutingDecision:
     distances = {node: float("inf") for node in state.nodes}
     previous: dict[str, str | None] = {node: None for node in state.nodes}
     distances[src] = 0.0
+
     heap: list[tuple[float, str]] = [(0.0, src)]
     visited: set[str] = set()
 
@@ -36,7 +41,6 @@ def find_route(state: NetworkState, src: str, dst: str) -> RoutingDecision:
 
         if current in visited:
             continue
-
         visited.add(current)
 
         if current == dst:
@@ -53,6 +57,7 @@ def find_route(state: NetworkState, src: str, dst: str) -> RoutingDecision:
         return _failed_decision(src, dst)
 
     path = _reconstruct_path(previous, src, dst)
+
     return RoutingDecision(
         source=src,
         destination=dst,
@@ -67,10 +72,12 @@ def find_route(state: NetworkState, src: str, dst: str) -> RoutingDecision:
 def _build_adjacency(state: NetworkState) -> dict[str, list[tuple[str, float]]]:
     """Build an undirected adjacency list with congestion-adjusted weights."""
     adjacency: dict[str, list[tuple[str, float]]] = {node: [] for node in state.nodes}
+
     for link in state.links:
         weight = link.base_latency * (1 + 4 * link.utilization ** 2)
         adjacency[link.source].append((link.target, weight))
         adjacency[link.target].append((link.source, weight))
+
     return adjacency
 
 
@@ -78,12 +85,14 @@ def _reconstruct_path(previous: dict[str, str | None], src: str, dst: str) -> li
     """Rebuild a path from destination to source using parent pointers."""
     path = [dst]
     current = dst
+
     while current != src:
         parent = previous[current]
         if parent is None:
             return []
         path.append(parent)
         current = parent
+
     path.reverse()
     return path
 
@@ -110,9 +119,12 @@ def _average_path_utilization(state: NetworkState, path: list[str]) -> float:
         frozenset((link.source, link.target)): link.utilization
         for link in state.links
     }
+
     values = [
         lookup[frozenset((path[index], path[index + 1]))]
         for index in range(len(path) - 1)
         if frozenset((path[index], path[index + 1])) in lookup
     ]
+
     return sum(values) / len(values) if values else 0.0
+
