@@ -10,6 +10,7 @@
 - Prepared development environment for project implementation
 
 **Phase:** Preparation
+<br>
 **Status:** Python fundamentals completed
 
 ---
@@ -24,6 +25,7 @@
 - Built foundational understanding required for routing algorithms
 
 **Phase:** Preparation
+<br>
 **Status:** Graph theory fundamentals completed
 
 ---
@@ -39,6 +41,7 @@
 - Visualized sample network topologies using Matplotlib
 
 **Phase:** Phase 1 (Network Simulator)
+<br>
 **Status:** NetworkX fundamentals completed
 
 ---
@@ -54,6 +57,7 @@
 - Visualized the network topology and routing paths
 
 **Phase:** Phase 1 (Network Simulator)
+<br>
 **Status:** Static network simulation completed
 
 ---
@@ -107,6 +111,21 @@
 - Reviewed `data_models.py` and `network_sim.py`
 
 **Phase:** Phase 1 (Network Simulator)
+<br>
 **Status:** Project execution plan finalized and repository set up
 
+---
+## 2026-06-16
+**Hours:** 5.5
+
+**Tasks:**
+- Learnt Docker and related concepts (~2 hrs)
+- Learning Git and GitHub for version control
+- Set up Docker configurations for the project (PostgreSQL and pgAdmin) and copied required environment variables
+- Verified working of images and containers
+- Npm installation and setup done
+- Implemented docstrings and `to_dict()` for easier help and JSON conversion; environment variables defined
+
+**Phase:** Phase 1 (Network Simulator)
+**Status:** All dependencies, packages, and containers worked properly
 ---
