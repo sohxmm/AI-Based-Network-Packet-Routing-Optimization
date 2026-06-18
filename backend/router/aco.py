@@ -21,7 +21,7 @@ class AntColonyRouter:
         self,
         alpha: float = 1.0,
         beta: float = 2.0,
-        evaporation_rate: float = 0.5,
+        evaporation_rate: float = 0.2, #changed  evaporation_rate from 0.5 to 0.2 , hormone depleation rate, lower means pheromones last longer
         Q: float = 100,
         n_ants: int = 20,
         n_iterations: int = 30,
