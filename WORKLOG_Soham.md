@@ -1,6 +1,6 @@
 # Internship Work Log
 
-Total hours: 15.5
+Total hours: 17
 
 ## 09/06/2026
 
