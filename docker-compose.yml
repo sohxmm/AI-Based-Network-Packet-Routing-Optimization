@@ -9,6 +9,7 @@ services: #all the images to be used and their details
       POSTGRES_USER: ${POSTGRES_USER:-routinguser}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-routingpass}
       POSTGRES_DB: ${POSTGRES_DB:-routing_db}
+      POSTGRES_HOST_AUTH_METHOD: md5
     ports:
       - "5432:5432"
     volumes:
@@ -36,4 +37,4 @@ services: #all the images to be used and their details
 
 volumes:
   postgres_data:
-#to be run in detack mode only..default networkcreated 
+#to be run in detach mode only..default networkcreated 

@@ -124,8 +124,36 @@
 - Set up Docker configurations for the project (PostgreSQL and pgAdmin) and copied required environment variables
 - Verified working of images and containers
 - Npm installation and setup done
-- Implemented docstrings and `to_dict()` for easier help and JSON conversion; environment variables defined
+- Implemented docstrings and to_dict() for easier help and JSON conversion; environment variables defined
 
-**Phase:** Phase 1 (Network Simulator)
+**Phase:** Phase 1 (Network Simulator) <br>
+**Status:** All dependencies, packages, and containers worked properly
+---
+## 2026-06-17
+**Hours:** 5.5
+
+**Tasks:**
+- Learnt Docker and related concepts (~2 hrs)
+- Learning Git and GitHub for version control
+- Set up Docker configurations for the project (PostgreSQL and pgAdmin) and copied required environment variables
+- Verified working of images and containers
+- Npm installation and setup done
+- Implemented docstrings and to_dict() for easier help and JSON conversion; environment variables defined
+
+**Phase:** Phase 1 (Network Simulator) <br>
+**Status:** All dependencies, packages, and containers worked properly
+---
+## 2026-06-18
+**Hours:** 7.5
+
+**Tasks:**
+- Learnt Docker and related concepts (~2 hrs)
+- Learning Git and GitHub for version control
+- Set up Docker configurations for the project (PostgreSQL and pgAdmin) and copied required environment variables
+- Verified working of images and containers
+- Npm installation and setup done
+- Implemented docstrings and to_dict() for easier help and JSON conversion; environment variables defined
+
+**Phase:** Phase 1 (Network Simulator) <br>
 **Status:** All dependencies, packages, and containers worked properly
 ---

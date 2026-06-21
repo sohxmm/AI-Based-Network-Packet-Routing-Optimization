@@ -4,9 +4,12 @@ import os
 from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
-load_dotenv()
+from pathlib import Path
+
+load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env")
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+#print(f"DEBUG: DATABASE_URL = {repr(DATABASE_URL)}") command to debug : python -m db.init_db 2>&1 | Tee-Object -FilePath debug_output.txt
 
 if DATABASE_URL is None:
     raise RuntimeError(
