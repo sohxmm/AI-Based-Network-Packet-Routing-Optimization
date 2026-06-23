@@ -1,6 +1,6 @@
 # Internship Work Log
 
-Total hours: 29.0
+Total hours: 32.0
 
 ## 09/06/2026
 
@@ -92,3 +92,22 @@ Next:
 - Implement WebSocket streaming
 - Add simulator background execution
 - Complete database integration and validation after team coordination
+
+## 23/06/2026
+
+Hours: 3.0
+
+Tasks:
+- Implemented WebSocket endpoint `/ws/stream` for live network-state updates
+- Added connected-client handling for dashboard WebSocket sessions
+- Added FastAPI lifespan startup/shutdown logic for background simulator stepping
+- Verified WebSocket messages use `state_update` type with serialized simulator payload
+- Smoke-tested health endpoint and WebSocket stream step progression
+
+Status:
+- Latest completed task: WebSocket streaming and automatic simulator background execution completed
+- Frontend can now receive live network-state updates without manually polling REST endpoints
+
+Next:
+- Connect frontend `useNetworkStream.js` hook to `/ws/stream`
+- Coordinate with Sneha on database endpoint and credential setup before DB-backed metrics/history work
