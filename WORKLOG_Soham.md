@@ -1,6 +1,6 @@
 # Internship Work Log
 
-Total hours: 32.0
+Total hours: 45.5
 
 ## 09/06/2026
 
@@ -111,3 +111,39 @@ Status:
 Next:
 - Connect frontend `useNetworkStream.js` hook to `/ws/stream`
 - Coordinate with Sneha on database endpoint and credential setup before DB-backed metrics/history work
+
+## 24/06/2026
+
+Hours: 4.0
+
+Tasks:
+- Added simulator control APIs for manual step, link failure and link restore
+- Added live metrics and algorithm comparison endpoints
+- Enabled CORS for frontend-backend communication
+
+Status:
+- Backend dashboard support endpoints completed
+
+## 25/06/2026
+
+Hours: 5.0
+
+Tasks:
+- Connected frontend to WebSocket live network stream
+- Built route comparison flow using all routing algorithms
+- Added topology path highlighting and congestion heatmap visualization
+
+Status:
+- Dashboard can display live network state and fastest route results
+
+## 26/06/2026
+
+Hours: 4.5
+
+Tasks:
+- Implemented LSTM congestion predictor module and forecast API scaffold
+- Added integration test for 100 routing decisions across all algorithms
+- Verified backend compile, integration test and frontend production build
+
+Status:
+- Demo-ready simulator, routing and dashboard integration prepared
