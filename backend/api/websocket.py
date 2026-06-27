@@ -26,24 +26,38 @@ class ConnectionManager:
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
 
+    async def broadcast(self, message: dict[str, object]) -> None:
+        """Send a message to all active connections."""
+        for connection in list(self.active_connections):
+            try:
+                await connection.send_json(message)
+            except Exception:
+                self.disconnect(connection)
+
 
 manager = ConnectionManager()
 
 
 @router.websocket("/ws/stream")
 async def stream_network_state(websocket: WebSocket) -> None:
-    """Push the current network state to one dashboard client every second."""
+    """Accept the connection, push initial state, and wait for client disconnects."""
     await manager.connect(websocket)
 
     try:
+        # Push initial state immediately upon connection
+        await websocket.send_json(
+            {
+                "type": "state_update",
+                "payload": _state_to_dict(),
+            }
+        )
+    except Exception:
+        manager.disconnect(websocket)
+        return
+
+    try:
         while True:
-            await websocket.send_json(
-                {
-                    "type": "state_update",
-                    "payload": _state_to_dict(),
-                }
-            )
-            await asyncio.sleep(1)
+            await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 

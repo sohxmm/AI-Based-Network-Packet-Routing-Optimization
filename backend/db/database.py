@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 # Read database URL from environment or use default
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://routinguser:routingpass@localhost:5432/routing_db"
+    "postgresql+asyncpg://routinguser:routingpass@localhost:5433/routing_db"
 )
 
 # Create async engine (allows concurrent DB operations)

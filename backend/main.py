@@ -7,16 +7,18 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import router as api_router
+from api.routes import router as api_router, handle_simulator_step
 from api.state import get_simulator
 from api.websocket import router as websocket_router
+from db.database import init_db
 
 
 async def advance_simulator_forever() -> None:
     """Advance the network simulator once per second until the app shuts down."""
     try:
         while True:
-            get_simulator().step()
+            state = get_simulator().step()
+            await handle_simulator_step(state)
             await asyncio.sleep(1)
     except asyncio.CancelledError:
         raise
@@ -25,6 +27,14 @@ async def advance_simulator_forever() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Start and stop the background simulator loop with the FastAPI app."""
+    # Initialize the database tables on startup
+    print("[DB] Initializing database tables...")
+    try:
+        await init_db()
+        print("[DB] Database tables initialized successfully.")
+    except Exception as exc:
+        print(f"[DB] Database initialization failed: {exc}")
+
     simulator_task = asyncio.create_task(advance_simulator_forever())
     app.state.simulator_task = simulator_task
 

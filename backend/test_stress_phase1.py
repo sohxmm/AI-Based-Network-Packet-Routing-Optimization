@@ -33,7 +33,7 @@ def test_500_steps_no_crash() -> None:
                 f"Invalid utilization at step {i}"
     
     elapsed = time.time() - start
-    print(f"  ✓ Completed 500 steps in {elapsed:.2f}s ({500/elapsed:.0f} steps/sec)")
+    print(f"  [OK] Completed 500 steps in {elapsed:.2f}s ({500/elapsed:.0f} steps/sec)")
 
 
 def test_link_failure_recovery() -> None:
@@ -59,7 +59,7 @@ def test_link_failure_recovery() -> None:
     num_links_after = len(state.links)
     
     assert num_links_after == num_links_before - 1, "Link was not removed"
-    print(f"  ✓ Link failed: {num_links_before} → {num_links_after}")
+    print(f"  [OK] Link failed: {num_links_before} -> {num_links_after}")
     
     # Restore it
     sim.restore_link(link_to_fail.source, link_to_fail.target)
@@ -68,7 +68,7 @@ def test_link_failure_recovery() -> None:
     num_links_restored = len(state.links)
     
     assert num_links_restored == num_links_before, "Link was not restored"
-    print(f"  ✓ Link restored: {num_links_after} → {num_links_restored}")
+    print(f"  [OK] Link restored: {num_links_after} -> {num_links_restored}")
 
 
 def test_all_routers_under_load() -> None:
@@ -109,8 +109,8 @@ def test_all_routers_under_load() -> None:
     elapsed = time.time() - start
     success_rate = (success_count / 100) * 100
     
-    print(f"  ✓ Completed 400 route lookups in {elapsed:.2f}s ({400/elapsed:.0f} lookups/sec)")
-    print(f"  ✓ Success rate: {success_rate:.1f}%")
+    print(f"  [OK] Completed 400 route lookups in {elapsed:.2f}s ({400/elapsed:.0f} lookups/sec)")
+    print(f"  [OK] Success rate: {success_rate:.1f}%")
     assert success_rate >= 95, f"Success rate too low: {success_rate}%"
 
 
@@ -140,7 +140,7 @@ def test_reproducibility_with_seed() -> None:
         assert abs(link1.utilization - link2.utilization) < 1e-10, \
             f"Utilization mismatch: {link1.utilization} vs {link2.utilization}"
     
-    print(f"  ✓ Identical results across {len(state1.links)} links")
+    print(f"  [OK] Identical results across {len(state1.links)} links")
 
 
 if __name__ == "__main__":
@@ -149,7 +149,7 @@ if __name__ == "__main__":
         test_link_failure_recovery()
         test_all_routers_under_load()
         test_reproducibility_with_seed()
-        print("\n✅ All tests passed!")
+        print("\n[SUCCESS] All tests passed!")
     except AssertionError as e:
         print(f"\n❌ Test failed: {e}")
         sys.exit(1)
