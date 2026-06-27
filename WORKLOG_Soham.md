@@ -1,6 +1,6 @@
 # Internship Work Log
 
-Total hours: 45.5
+Total hours: 66.5
 
 ## 09/06/2026
 
@@ -147,3 +147,46 @@ Tasks:
 
 Status:
 - Demo-ready simulator, routing and dashboard integration prepared
+
+## 25/06/2026
+
+Hours: 6.0
+
+Tasks:
+- Designed and implemented `NetworkRoutingEnv` using Gymnasium API
+- Built 80-dim normalised observation space (utilization, queue, loss, latency per link)
+- Defined shaped reward function penalising latency, utilization, and packet loss
+- Validated environment with `check_env()` — zero warnings
+- Wrote `train_rl.py` PPO training pipeline with CheckpointCallback and EvalCallback
+
+Status:
+- Gymnasium environment complete and validated
+
+## 26/06/2026
+
+Hours: 5.0
+
+Tasks:
+- Ran PPO training for 500,000 timesteps on CPU (24.9 min)
+- Monitored TensorBoard logs; reward improved from -77 to -61 (+21%)
+- Best eval checkpoint achieved mean reward -45.81 at 25k steps
+- Saved final model and 10 periodic checkpoints to `backend/ml/models/`
+- Updated `router/rl_agent.py` to load PPO model for deterministic inference
+- Added heuristic fallback for cold-start when model not yet trained
+
+Status:
+- RL router fully operational with trained PPO policy
+
+## 27/06/2026
+
+Hours: 4.0
+
+Tasks:
+- Fixed topology graph re-layout bug caused by full D3 teardown on every WebSocket tick
+- Refactored `TopologyGraph.jsx` into two-effect strategy: simulation built once, colors updated per tick
+- Added CSS transitions for smooth link color animation
+- Added drag-to-pin node behaviour so user-positioned nodes stay fixed
+- Committed Phase 4 changes to `dev` branch and pushed to GitHub
+
+Status:
+- Phase 4 complete; RL routing, LSTM forecasting, and stable dashboard all production-ready
