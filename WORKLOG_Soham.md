@@ -1,6 +1,6 @@
 # Internship Work Log
 
-Total hours: 66.5
+Total hours: 71.0
 
 ## 09/06/2026
 
@@ -85,8 +85,8 @@ Tasks:
 - Diagnosed database credential configuration issues
 
 Status:
-- Latest completed task: Phase 1 and Phase 2 validation passed, and current REST API scaffold was smoke-tested successfully
-- Phase 3 is partially complete; WebSocket streaming and DB-backed metrics/history remain pending
+- Phase 1 and Phase 2 validation passed, REST API scaffold smoke-tested successfully
+- Phase 3 partially complete; WebSocket streaming and DB-backed metrics/history pending
 
 Next:
 - Implement WebSocket streaming
@@ -105,7 +105,7 @@ Tasks:
 - Smoke-tested health endpoint and WebSocket stream step progression
 
 Status:
-- Latest completed task: WebSocket streaming and automatic simulator background execution completed
+- WebSocket streaming and automatic simulator background execution completed
 - Frontend can now receive live network-state updates without manually polling REST endpoints
 
 Next:
@@ -126,31 +126,22 @@ Status:
 
 ## 25/06/2026
 
-Hours: 5.0
+Hours: 5.5
 
 Tasks:
 - Connected frontend to WebSocket live network stream
 - Built route comparison flow using all routing algorithms
 - Added topology path highlighting and congestion heatmap visualization
+- Implemented LSTM congestion predictor module and forecast API scaffold
+- Added integration test for 100 routing decisions across all algorithms
 
 Status:
-- Dashboard can display live network state and fastest route results
+- Dashboard displaying live network state and fastest route results
+- LSTM forecasting scaffold in place
 
 ## 26/06/2026
 
-Hours: 4.5
-
-Tasks:
-- Implemented LSTM congestion predictor module and forecast API scaffold
-- Added integration test for 100 routing decisions across all algorithms
-- Verified backend compile, integration test and frontend production build
-
-Status:
-- Demo-ready simulator, routing and dashboard integration prepared
-
-## 25/06/2026
-
-Hours: 6.0
+Hours: 5.5
 
 Tasks:
 - Designed and implemented `NetworkRoutingEnv` using Gymnasium API
@@ -158,11 +149,13 @@ Tasks:
 - Defined shaped reward function penalising latency, utilization, and packet loss
 - Validated environment with `check_env()` — zero warnings
 - Wrote `train_rl.py` PPO training pipeline with CheckpointCallback and EvalCallback
+- Verified backend compile, integration test and frontend production build
 
 Status:
 - Gymnasium environment complete and validated
+- Training pipeline ready to run
 
-## 26/06/2026
+## 27/06/2026
 
 Hours: 5.0
 
@@ -177,7 +170,7 @@ Tasks:
 Status:
 - RL router fully operational with trained PPO policy
 
-## 27/06/2026
+## 28/06/2026
 
 Hours: 4.0
 
@@ -186,7 +179,20 @@ Tasks:
 - Refactored `TopologyGraph.jsx` into two-effect strategy: simulation built once, colors updated per tick
 - Added CSS transitions for smooth link color animation
 - Added drag-to-pin node behaviour so user-positioned nodes stay fixed
+
+Status:
+- Topology graph stable; only link colors update on each simulator tick
+
+## 29/06/2026
+
+Hours: 3.5
+
+Tasks:
+- Cleaned up and organised worklog entries
 - Committed Phase 4 changes to `dev` branch and pushed to GitHub
+- Prepared demo walkthrough and presentation guide for project review meeting
+- Reviewed all API endpoints and verified end-to-end routing flow
 
 Status:
 - Phase 4 complete; RL routing, LSTM forecasting, and stable dashboard all production-ready
+- Project ready for final presentation
