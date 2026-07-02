@@ -17,7 +17,7 @@ import { utilizationColor } from "../utils/colorScales.js";
  *   selection.attr() — no DOM teardown, no simulation restart.
  *   Uses a short CSS transition so color changes animate smoothly.
  */
-function TopologyGraph({ networkState, highlightedPath = [] }) {
+function TopologyGraph({ networkState, highlightedPath = [], isDark = true }) {
   const svgRef = useRef(null);
 
   // Stable refs to D3 selections so Phase 2 can reach them without
@@ -116,9 +116,8 @@ function TopologyGraph({ networkState, highlightedPath = [] }) {
       .append("circle")
       .attr("r", 15)
       .attr("fill", "#38bdf8")
-      .attr("stroke", "#e2e8f0")
       .attr("stroke-width", 1.5)
-      .style("transition", "fill 0.6s ease");
+      .style("transition", "fill 0.6s ease, stroke 0.6s ease");
 
     nodeSel
       .append("text")
@@ -172,7 +171,7 @@ function TopologyGraph({ networkState, highlightedPath = [] }) {
     // Update link stroke + width (CSS transition handles the animation)
     linkSelRef.current
       .attr("stroke", (d) => {
-        if (highlightedEdges.has(d.edgeKey)) return "#67e8f9";
+        if (highlightedEdges.has(d.edgeKey)) return isDark ? "#67e8f9" : "#06b6d4";
         const util = utilMap.get(d.edgeKey) ?? 0;
         return utilizationColor(util);
       })
@@ -196,21 +195,30 @@ function TopologyGraph({ networkState, highlightedPath = [] }) {
       );
       return isCongested ? "#ef4444" : "#38bdf8";
     });
-  }, [networkState, highlightedPath]);
+  }, [networkState, highlightedPath, isDark]);
+
+  // ─── Phase 3: Update theme colors ──────────────
+  useEffect(() => {
+    if (!svgRef.current) return;
+    const svg = d3.select(svgRef.current);
+    // Unhighlighted links might need updating but they're mostly colored by utilizationColor which we can assume handles it.
+    // We just update the node strokes here.
+    svg.selectAll(".nodes circle").attr("stroke", isDark ? "#e2e8f0" : "#cbd5e1");
+  }, [isDark, networkState?.nodes]);
 
   return (
-    <section className="min-h-[420px] rounded border border-slate-800 bg-slate-900/90 p-4">
+    <section className="min-h-[420px] rounded border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900/90">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-slate-200">Topology Graph</h2>
-        <span className="text-xs text-slate-500">Drag nodes to reposition • colors update live</span>
+        <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Topology Graph</h2>
+        <span className="text-xs text-slate-500 dark:text-slate-400">Drag nodes to reposition • colors update live</span>
       </div>
       {networkState?.nodes?.length ? (
         <svg
           ref={svgRef}
-          className="mt-4 h-[360px] w-full rounded border border-slate-800 bg-slate-950"
+          className="mt-4 h-[360px] w-full rounded border border-slate-300 bg-slate-50 dark:border-slate-800 dark:bg-slate-950"
         />
       ) : (
-        <div className="mt-4 flex h-[360px] items-center justify-center rounded border border-dashed border-slate-700 text-sm text-slate-500">
+        <div className="mt-4 flex h-[360px] items-center justify-center rounded border border-dashed border-slate-300 text-sm text-slate-500 dark:border-slate-700">
           Waiting for network state
         </div>
       )}

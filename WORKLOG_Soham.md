@@ -1,6 +1,6 @@
 # Internship Work Log
 
-Total hours: 71.0
+Total hours: 79.0
 
 ## 09/06/2026
 
@@ -196,3 +196,28 @@ Tasks:
 Status:
 - Phase 4 complete; RL routing, LSTM forecasting, and stable dashboard all production-ready
 - Project ready for final presentation
+
+## 01/07/2026
+
+Hours: 3.5
+
+Tasks:
+- Investigated UI improvements for dashboard 
+- Planned migration from 2-column to 3-column CSS Grid layout for better space utilization
+- Explored Tailwind dark mode configuration
+
+Status:
+- UI improvement plan finalized
+
+## 02/07/2026
+
+Hours: 4.5
+
+Tasks:
+- Migrated dashboard to full-width 3-column layout
+- Implemented light/dark mode theme toggle across all React components
+- Updated Recharts and D3 TopologyGraph to dynamically respond to theme changes
+- Added click-to-expand feature for long routing paths in the Route Comparison table
+
+Status:
+- UI overhaul successfully implemented and verified

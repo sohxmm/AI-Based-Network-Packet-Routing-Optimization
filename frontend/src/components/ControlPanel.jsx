@@ -33,9 +33,9 @@ function ControlPanel({ networkState, isLoading, onSimulatorAction }) {
   }
 
   return (
-    <section className="flex flex-wrap items-center gap-2 rounded border border-slate-800 bg-slate-900/90 p-4">
+    <section className="flex flex-wrap items-center gap-2 rounded border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900/90">
       <button
-        className="inline-flex h-9 items-center gap-2 rounded border border-slate-700 px-3 text-sm disabled:opacity-50"
+        className="inline-flex h-9 items-center gap-2 rounded border border-slate-300 bg-white px-3 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-transparent dark:text-slate-100 dark:hover:bg-slate-800"
         disabled={isLoading}
         onClick={() => stepMany(1)}
         type="button"
@@ -44,7 +44,7 @@ function ControlPanel({ networkState, isLoading, onSimulatorAction }) {
         Step +1
       </button>
       <button
-        className="inline-flex h-9 items-center gap-2 rounded border border-slate-700 px-3 text-sm disabled:opacity-50"
+        className="inline-flex h-9 items-center gap-2 rounded border border-slate-300 bg-white px-3 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-transparent dark:text-slate-100 dark:hover:bg-slate-800"
         disabled={isLoading}
         onClick={() => stepMany(10)}
         type="button"
@@ -53,7 +53,7 @@ function ControlPanel({ networkState, isLoading, onSimulatorAction }) {
         Step +10
       </button>
       <select
-        className="h-9 min-w-36 rounded border border-slate-700 bg-slate-950 px-2 text-sm text-slate-100"
+        className="h-9 min-w-36 rounded border border-slate-300 bg-slate-50 px-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
         value={activeLink}
         onChange={(event) => setSelectedLink(event.target.value)}
       >
@@ -67,7 +67,7 @@ function ControlPanel({ networkState, isLoading, onSimulatorAction }) {
         })}
       </select>
       <button
-        className="inline-flex h-9 items-center gap-2 rounded border border-slate-700 px-3 text-sm disabled:opacity-50"
+        className="inline-flex h-9 items-center gap-2 rounded border border-slate-300 bg-white px-3 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-transparent dark:text-slate-100 dark:hover:bg-slate-800"
         disabled={isLoading || !activeLink}
         onClick={() => sendLinkAction("/sim/inject-failure", "Injected link failure.")}
         type="button"
@@ -76,7 +76,7 @@ function ControlPanel({ networkState, isLoading, onSimulatorAction }) {
         Inject Failure
       </button>
       <button
-        className="inline-flex h-9 items-center gap-2 rounded border border-slate-700 px-3 text-sm disabled:opacity-50"
+        className="inline-flex h-9 items-center gap-2 rounded border border-slate-300 bg-white px-3 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-transparent dark:text-slate-100 dark:hover:bg-slate-800"
         disabled={isLoading || !activeLink}
         onClick={() => sendLinkAction("/sim/restore-link", "Restored selected link.")}
         type="button"
@@ -84,7 +84,7 @@ function ControlPanel({ networkState, isLoading, onSimulatorAction }) {
         <RotateCcw className="h-4 w-4" aria-hidden="true" />
         Restore Link
       </button>
-      {lastAction && <span className="text-sm text-slate-400">{lastAction}</span>}
+      {lastAction && <span className="text-sm text-slate-500 dark:text-slate-400">{lastAction}</span>}
     </section>
   );
 }
