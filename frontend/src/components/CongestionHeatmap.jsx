@@ -18,15 +18,16 @@ function CongestionHeatmap({ networkState, isDark = true }) {
     .sort((left, right) => right.utilization - left.utilization)
     .slice(0, 12);
 
+  // We can use generic neutral colors or inherit from css variables if available.
   const axisColor = isDark ? "#94a3b8" : "#475569";
   const gridColor = isDark ? "#1e293b" : "#e2e8f0";
-  const tooltipBg = isDark ? "#0f172a" : "#ffffff";
-  const tooltipBorder = isDark ? "#334155" : "#cbd5e1";
-  const tooltipColor = isDark ? "#e2e8f0" : "#0f172a";
+  const tooltipBg = "var(--color-panel)";
+  const tooltipBorder = "var(--color-border)";
+  const tooltipColor = "var(--color-text-main)";
 
   return (
-    <section className="rounded border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900/90">
-      <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Congestion Heatmap</h2>
+    <section className="rounded border border-app-border bg-app-panel p-4">
+      <h2 className="text-sm font-semibold text-app-text">Congestion Heatmap</h2>
       <div className="mt-4 h-72">
         {data.length ? (
           <ResponsiveContainer width="100%" height="100%">
@@ -39,11 +40,11 @@ function CongestionHeatmap({ networkState, isDark = true }) {
                 contentStyle={{ background: tooltipBg, border: `1px solid ${tooltipBorder}` }}
                 labelStyle={{ color: tooltipColor }}
               />
-              <Bar dataKey="utilization" name="Utilization" fill="#22d3ee" radius={[0, 4, 4, 0]} />
+              <Bar dataKey="utilization" name="Utilization" fill="var(--color-accent)" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
         ) : (
-          <div className="flex h-full items-center justify-center rounded border border-dashed border-slate-300 text-sm text-slate-500 dark:border-slate-700">
+          <div className="flex h-full items-center justify-center rounded border border-dashed border-app-border text-sm text-app-muted">
             Waiting for network state
           </div>
         )}

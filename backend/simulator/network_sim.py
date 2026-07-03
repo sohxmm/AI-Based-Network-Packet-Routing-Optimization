@@ -71,6 +71,17 @@ class NetworkSimulator:
 
         return self.get_state()
 
+    def reset(self) -> NetworkState:
+        """Reset the simulation to its initial state."""
+        self.random = random.Random(self.seed)
+        self.graph.clear()
+        self.failed_edges.clear()
+        self.step_count = 0
+        self.congestion_link = None
+        self.congestion_remaining = 0
+        self._build_topology()
+        return self.get_state()
+
     def get_state(self) -> NetworkState:
         """Return the current network state without advancing the simulation."""
         links = [

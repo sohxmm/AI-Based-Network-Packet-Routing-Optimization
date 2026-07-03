@@ -1,6 +1,6 @@
 # Internship Work Log
 
-Total hours: 79.0
+Total hours: 83.0
 
 ## 09/06/2026
 
@@ -221,3 +221,18 @@ Tasks:
 
 Status:
 - UI overhaul successfully implemented and verified
+
+## 03/07/2026
+
+Hours: 4.0
+
+Tasks:
+- Added Node Queue Sizes and Global Topology Stats panels to utilize dashboard empty space
+- Refactored hardcoded colors into a dynamic CSS-variable theming engine in `index.css`
+- Integrated 10 popular themes (Dracula, Solarized, GitHub Dark, Nord, etc.) into the dashboard
+- Fixed UI contrast issues and standardized native dropdown styling for `select` menus
+- Implemented "Reset Simulator" functionality in backend and frontend Control Panel
+- Verified frontend build and styling changes
+
+Status:
+- Dashboard features complete, robust custom theming deployed and verified

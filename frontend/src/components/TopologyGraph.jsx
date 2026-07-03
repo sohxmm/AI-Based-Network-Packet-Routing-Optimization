@@ -115,7 +115,7 @@ function TopologyGraph({ networkState, highlightedPath = [], isDark = true }) {
     const circlesSel = nodeSel
       .append("circle")
       .attr("r", 15)
-      .attr("fill", "#38bdf8")
+      .attr("fill", "var(--color-accent)")
       .attr("stroke-width", 1.5)
       .style("transition", "fill 0.6s ease, stroke 0.6s ease");
 
@@ -125,7 +125,7 @@ function TopologyGraph({ networkState, highlightedPath = [], isDark = true }) {
       .attr("text-anchor", "middle")
       .attr("font-size", 10)
       .attr("font-weight", 700)
-      .attr("fill", "#0f172a")
+      .attr("fill", "var(--color-accent-text)")
       .attr("pointer-events", "none")
       .text((d) => d.id);
 
@@ -193,7 +193,7 @@ function TopologyGraph({ networkState, highlightedPath = [], isDark = true }) {
         (l) =>
           l.utilization > 0.8 && (l.source === d.id || l.target === d.id)
       );
-      return isCongested ? "#ef4444" : "#38bdf8";
+      return isCongested ? "#ef4444" : "var(--color-accent)";
     });
   }, [networkState, highlightedPath, isDark]);
 
@@ -203,22 +203,22 @@ function TopologyGraph({ networkState, highlightedPath = [], isDark = true }) {
     const svg = d3.select(svgRef.current);
     // Unhighlighted links might need updating but they're mostly colored by utilizationColor which we can assume handles it.
     // We just update the node strokes here.
-    svg.selectAll(".nodes circle").attr("stroke", isDark ? "#e2e8f0" : "#cbd5e1");
+    svg.selectAll(".nodes circle").attr("stroke", isDark ? "var(--color-border)" : "var(--color-border)");
   }, [isDark, networkState?.nodes]);
 
   return (
-    <section className="min-h-[420px] rounded border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900/90">
+    <section className="min-h-[420px] rounded border border-app-border bg-app-panel p-4">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Topology Graph</h2>
-        <span className="text-xs text-slate-500 dark:text-slate-400">Drag nodes to reposition • colors update live</span>
+        <h2 className="text-sm font-semibold text-app-text">Topology Graph</h2>
+        <span className="text-xs text-app-muted">Drag nodes to reposition • colors update live</span>
       </div>
       {networkState?.nodes?.length ? (
         <svg
           ref={svgRef}
-          className="mt-4 h-[360px] w-full rounded border border-slate-300 bg-slate-50 dark:border-slate-800 dark:bg-slate-950"
+          className="mt-4 h-[360px] w-full rounded border border-app-border bg-app-input-bg"
         />
       ) : (
-        <div className="mt-4 flex h-[360px] items-center justify-center rounded border border-dashed border-slate-300 text-sm text-slate-500 dark:border-slate-700">
+        <div className="mt-4 flex h-[360px] items-center justify-center rounded border border-dashed border-app-border text-sm text-app-muted">
           Waiting for network state
         </div>
       )}

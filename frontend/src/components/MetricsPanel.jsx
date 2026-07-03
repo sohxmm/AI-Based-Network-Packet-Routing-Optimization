@@ -36,12 +36,12 @@ function MetricsPanel({ networkState, comparison }) {
   return (
     <section className="flex flex-col gap-3">
       {metrics.map(({ label, value, Icon }) => (
-        <article key={label} className="rounded border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900/90">
+        <article key={label} className="rounded border border-app-border bg-app-panel p-4">
           <div className="flex items-center justify-between gap-3">
-            <span className="text-xs uppercase text-slate-500">{label}</span>
-            <Icon className="h-4 w-4 text-cyan-600 dark:text-cyan-300" aria-hidden="true" />
+            <span className="text-xs uppercase text-app-muted">{label}</span>
+            <Icon className="h-4 w-4 text-app-accent" aria-hidden="true" />
           </div>
-          <p className="mt-3 truncate text-2xl font-semibold text-slate-900 dark:text-slate-100">{value}</p>
+          <p className="mt-3 truncate text-2xl font-semibold text-app-text">{value}</p>
         </article>
       ))}
     </section>

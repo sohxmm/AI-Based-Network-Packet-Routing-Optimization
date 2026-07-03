@@ -156,6 +156,14 @@ async def step_simulation() -> dict[str, object]:
     return _state_to_dict(state)
 
 
+@router.post("/sim/reset")
+async def reset_simulation() -> dict[str, object]:
+    """Reset the singleton simulator to its initial state."""
+    state = get_simulator().reset()
+    await handle_simulator_step(state)
+    return _state_to_dict(state)
+
+
 @router.post("/sim/inject-failure")
 def inject_failure(request: LinkRequest) -> dict[str, object]:
     """Temporarily remove a link from the active simulator topology."""
