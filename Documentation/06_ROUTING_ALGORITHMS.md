@@ -19,6 +19,7 @@ This makes highly-utilized links quadratically more expensive, encouraging all a
 | ACO            | O(iterations × ants × V) | Metaheuristic | Multi-path exploration, adaptive | `router/aco.py`              |
 | RL (PPO)       | O(inference)       | Learned Policy    | Adapts to traffic patterns over time  | `router/rl_agent.py`         |
 
+RL might provide better results for larger networks with more routers.
 ---
 
 ## 2. Dijkstra's Algorithm

@@ -157,4 +157,4 @@ AI-Based Network Packet Routing Optimization/
 | Name  | Role                                  |
 |-------|---------------------------------------|
 | Soham | Backend, ML/AI, routing algorithms, dashboard integration |
-| Sneha | Database, frontend components, testing |
+| Sneha | Database (SQLAlchemy models, PostgreSQL/Docker setup), backend (FastAPI, 10 endpoints), algorithms (Dijkstra, ACO, PPO RL training), frontend components (React/D3.js dashboard), and testing (stress tests, infrastructure debugging) |

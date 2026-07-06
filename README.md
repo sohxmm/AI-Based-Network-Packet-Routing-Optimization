@@ -45,6 +45,17 @@ This project simulates a dynamic network of 10 routers with 20 links, where traf
 A real-time React dashboard visualizes the network topology, compares algorithm performance, and displays congestion forecasts from an LSTM model.
 
 ---
+## ✅ Development Progress — 5/5 Weeks Complete
+
+![Progress](https://img.shields.io/badge/Progress-100%25-brightgreen)
+
+- ✅ **Week 1 — Simulation Core:** Built NetworkSimulator engine and SQLAlchemy database models
+- ✅ **Week 2 — Routing Algorithms:** Implemented Dijkstra & ACO with stress testing
+- ✅ **Week 3 — Backend API:** Developed FastAPI async backend (10 endpoints) with PostgreSQL via Docker
+- ✅ **Week 4 — Reinforcement Learning:** Built Gymnasium environment and trained PPO agent (Stable-Baselines3)
+- ✅ **Week 5 — Live Dashboard:** Delivered React/D3.js dashboard with real-time topology graph and routing history
+
+---
 
 ## ✨ Key Features
 
@@ -282,7 +293,7 @@ Comprehensive documentation is available in the [`Documentation/`](Documentation
 | Name  | Role                                                         |
 |-------|--------------------------------------------------------------|
 | Soham | Backend, ML/AI, routing algorithms, dashboard integration    |
-| Sneha | Database, frontend components, testing                       |
+| Sneha | Database (SQLAlchemy models, PostgreSQL/Docker setup), backend (FastAPI, 10 endpoints), algorithms (Dijkstra, ACO, PPO RL training), frontend components (React/D3.js dashboard), and testing (stress tests, infrastructure debugging)                 |
 
 ---
 
