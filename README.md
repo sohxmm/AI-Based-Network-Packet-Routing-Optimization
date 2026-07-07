@@ -17,6 +17,7 @@ An intelligent network routing simulation platform that compares classical graph
 ## 📖 Table of Contents
 
 - [Overview](#-overview)
+- [Development Progress](#-development-progress--55-weeks-complete)
 - [Key Features](#-key-features)
 - [Architecture](#-architecture)
 - [Tech Stack](#-tech-stack)
