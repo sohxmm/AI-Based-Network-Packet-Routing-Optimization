@@ -244,7 +244,7 @@
 
 ## 2026-06-23
 **Hours:** 3.5
-**Phase:** Week 4 (RL Environment + PPO Training Pipeline)
+
 
 **Tasks:**
 - Built `ml/rl_environment.py` — Gymnasium `NetworkRoutingEnv` wrapping `NetworkSimulator`
@@ -259,14 +259,14 @@
   - Saves best model separately from final model
 - Updated `router/rl_agent.py` — PPO model inference with random path fallback when no model loaded
 - Committed RL environment and training pipeline to `sneha-week1`
-
+**Phase:** Week 4 (RL Environment + PPO Training Pipeline)
 **Status:** RL environment verified, training pipeline ready. Model training pending.
 
 ---
 
 ## 2026-06-24
 **Hours:** 6.0
-**Phase:** Week 5 (React Dashboard)
+
 
 **Tasks:**
 - Built `frontend/src/hooks/useNetworkStream.js` — custom WebSocket hook with exponential backoff reconnection (1s → 2s → 4s, max 30s), handles `network_state` and `routing_event` message types
@@ -282,13 +282,14 @@
 - Verified full end-to-end dashboard working: topology renders live, Compare All returns all 4 algorithms, Step +1/+10 advance the simulation, inject failure removes links from graph
 - Committed all frontend work to `sneha-week1`
 
+**Phase:** Week 5 (React Dashboard)
 **Status:** Dashboard fully functional. All 4 algorithms visible in route comparison. Live topology updating every 2 seconds.
 
 ---
 
 ## 2026-06-25
 **Hours:** 2.0
-**Phase:** Week 4–5
+
 
 **Tasks:**
 - Demo preparation and testing
@@ -296,13 +297,14 @@
 - Debugged uvicorn startup issue caused by Python 3.14 subprocess conflict with venv (3.11); resolved by running `python -m uvicorn main:app` instead of the bare `uvicorn` command
 - Ran demo walkthrough: live topology, route comparison across all 4 algorithms, step controls, link failure/restore
 
+**Phase:** Week 4–5
 **Status:** Full stack demo running successfully. Pending: parts of frontend.
 
 ---
 
 ## 2026-06-28
 **Hours:** 4.0
-**Phase:** Week 5 (UI/UX improvements) + Week 4 (RL model integration)
+
 
 **Tasks:**
 - Fixed `.env` credentials in new project folder (`swdc_final/ai--ml-3`) — `DATABASE_URL` had placeholder `user:password` values; updated to real `routinguser:routingpass` credentials
@@ -311,13 +313,14 @@
 - Wired trained PPO model into live API — added auto-load in `api/routes.py` on server startup so RL algorithm uses real trained decisions instead of random path fallback
 - Updated `api/routes.py` to load model from `ml/models/ppo_routing_agent.zip` at import time
 
+**Phase:** Week 5 (UI/UX improvements) + Week 4 (RL model integration)
 **Status:** Dashboard significantly improved. RL model loading on startup. Metrics updating live.
 
 ---
 
 ## 2026-06-29
 **Hours:** 3.5
-**Phase:** Week 4 (PPO training) + Week 5
+
 
 **Tasks:**
 - Trained PPO routing agent — ran `python -m ml.train_rl` for 50,000 timesteps
@@ -329,6 +332,7 @@
 - Investigated and documented UI/UX improvement plan — fixed moving graph issue (D3 simulation rebuilding on every poll), identified side panel additions (network health, algorithm comparison, node detail, simulation log)
 - Pushed all changes to `sneha-week1`
 
+**Phase:** Week 4 (PPO training) + Week 5
 **Status:** Trained model committed and loading in production. UI improvement plan documented.
 ---
 
@@ -374,6 +378,18 @@
 **Status:**  Pending: merge sneha-week1 PR into dev, changes to be made in UI/UX then dev into main for final submission.
 ---
 
+## 2026-07-03
+**Hours:** 3.5
+
+**Tasks:**
+
+-Tried better colour cominations for the simulation algorithms and the congestion heatmaps on older theme and layout.
+-Pulled the main branch to check the updated changes and finalize on the theme and UI/UX layout and themes .
+
+**Phase:** Week 5 (UI/UX improvements)
+**Status:** Color system foundation laid using the team's chosen palette.
+
+---
 ## 2026-07-03
 **Hours:** 3.5
 

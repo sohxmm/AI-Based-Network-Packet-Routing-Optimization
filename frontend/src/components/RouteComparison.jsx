@@ -18,10 +18,22 @@ function RouteComparison({ networkState, comparison, isLoading, onCompare }) {
       return result.total_latency < best.total_latency ? result : best;
     }, null)?.algorithm;
   }, [comparison]);
-  const chartData = (comparison?.results ?? []).map((result) => ({
-    algorithm: result.algorithm.replace("_", " "),
-    latency: result.total_latency ?? 0
-  }));
+
+  const chartData = (comparison?.results ?? []).map((result) => {
+    const rawName = result.algorithm.toLowerCase();
+    
+    // FIX: Shorten names so they can fit side-by-side perfectly straight
+    let shortName = rawName;
+    if (rawName.includes("dijkstra")) shortName = "Dijkstra";
+    else if (rawName.includes("bellman")) shortName = "Bellman-Ford";
+    else if (rawName.includes("aco")) shortName = "ACO";
+    else if (rawName.includes("ri") || rawName === "rl") shortName = "RL";
+
+    return {
+      algorithm: shortName,
+      latency: result.total_latency ?? 0
+    };
+  });
 
   function handleSubmit(event) {
     event.preventDefault();
@@ -116,14 +128,33 @@ function RouteComparison({ networkState, comparison, isLoading, onCompare }) {
       {chartData.length > 0 && (
         <div className="mt-4 h-44 rounded border border-app-border bg-app-input-bg p-2">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData}>
-              <XAxis dataKey="algorithm" stroke="currentColor" className="text-app-muted" tick={{ fontSize: 11 }} />
-              <YAxis stroke="currentColor" className="text-app-muted" tick={{ fontSize: 11 }} />
+            {/* Margins balanced back out for horizontal labels */}
+            <BarChart data={chartData} margin={{ top: 15, right: 5, left: -20, bottom: 5 }}>
+              {/* FIXED: Straight labels at 0 angle with slightly smaller font size */}
+              <XAxis 
+                dataKey="algorithm" 
+                stroke="currentColor" 
+                className="text-app-muted" 
+                tick={{ fontSize: 10, angle: 0, textAnchor: 'middle', dy: 4 }}
+                interval={0}
+              />
+              <YAxis 
+                stroke="currentColor" 
+                className="text-app-muted" 
+                tick={{ fontSize: 11 }} 
+                domain={[0, 'dataMax + 2']} 
+                tickFormatter={(value) => Math.round(value)}
+              />
               <Tooltip
                 contentStyle={{ background: "var(--color-panel)", border: "1px solid var(--color-border)" }}
                 labelStyle={{ color: "var(--color-text-main)" }}
               />
-              <Bar dataKey="latency" name="Latency ms" fill="var(--color-accent)" radius={[4, 4, 0, 0]} />
+              <Bar 
+                dataKey="latency" 
+                name="Latency ms" 
+                fill="var(--color-accent, #3b82f6)" 
+                radius={[4, 4, 0, 0]} 
+              />
             </BarChart>
           </ResponsiveContainer>
         </div>
