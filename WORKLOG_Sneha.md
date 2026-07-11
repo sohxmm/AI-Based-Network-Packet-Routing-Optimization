@@ -238,9 +238,6 @@
 **Status:** All REST endpoints validated via Swagger UI and stress test. Tables confirmed in PostgreSQL via psql. Week 3 complete.
 
 ---
-# Worklog — Sneha
-
----
 
 ## 2026-06-23
 **Hours:** 3.5

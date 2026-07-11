@@ -18,7 +18,7 @@ from simulator.data_models import LinkState, NetworkState
 class NetworkSimulator:
     """Simulate a dynamic packet-routing network as a weighted graph."""
 
-    def __init__(self, num_nodes: int = 10, seed: int = 42) -> None:
+    def __init__(self, num_nodes: int = 25, seed: int = 42) -> None:
         self.num_nodes = num_nodes
         self.seed = seed
         self.random = random.Random(seed)
@@ -37,7 +37,7 @@ class NetworkSimulator:
         for i in range(self.num_nodes):
             self._add_random_link(nodes[i], nodes[(i + 1) % self.num_nodes])
 
-        target_edges = min(20, self.num_nodes * (self.num_nodes - 1) // 2)
+        target_edges = min(50, self.num_nodes * (self.num_nodes - 1) // 2)
         extra_links = max(0, target_edges - self.graph.number_of_edges())
 
         while extra_links > 0:
