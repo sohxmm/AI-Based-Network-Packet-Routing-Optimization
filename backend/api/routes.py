@@ -16,6 +16,7 @@ from ml.congestion_lstm import CongestionPredictor
 from router.aco import AntColonyRouter
 from router.bellman_ford import find_route as bellman_ford_route
 from router.dijkstra import find_route as dijkstra_route
+from router.gnn_router import GNNRouter
 from router.rl_agent import RLRouter
 from simulator.data_models import NetworkState, RoutingDecision
 
@@ -25,9 +26,9 @@ from api.websocket import manager
 
 router = APIRouter()
 
-AlgorithmName = Literal["dijkstra", "bellman_ford", "aco", "rl"]
+AlgorithmName = Literal["dijkstra", "bellman_ford", "aco", "rl", "gnn"]
 RouteFinder = Callable[[NetworkState, str, str], RoutingDecision]
-DEFAULT_ALGORITHMS: list[AlgorithmName] = ["dijkstra", "bellman_ford", "aco", "rl"]
+DEFAULT_ALGORITHMS: list[AlgorithmName] = ["dijkstra", "bellman_ford", "aco", "rl", "gnn"]
 congestion_predictor = CongestionPredictor()
 forecast_history: list[list[float]] = []
 
@@ -253,10 +254,10 @@ async def get_metrics_summary(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, object]:
     """Return summary metrics derived from the database for the last 100 decisions."""
-    if algorithm and algorithm not in ["dijkstra", "bellman_ford", "aco", "rl"]:
+    if algorithm and algorithm not in ["dijkstra", "bellman_ford", "aco", "rl", "gnn"]:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid algorithm name: {algorithm}. Supported: ['dijkstra', 'bellman_ford', 'aco', 'rl']"
+            detail=f"Invalid algorithm name: {algorithm}. Supported: ['dijkstra', 'bellman_ford', 'aco', 'rl', 'gnn']"
         )
         
     stmt = select(RoutingEvent)
@@ -291,6 +292,7 @@ async def get_metrics_summary(
         "congestion_events": congestion_events,
         "active_algorithm": algorithm or "dijkstra",
         "rl_trained": RLRouter().is_trained,
+        "gnn_trained": GNNRouter().is_trained,
     }
 
 
@@ -366,6 +368,18 @@ def get_congestion_forecast(steps: int = 3) -> dict[str, object]:
     }
 
 
+@router.get("/health/gnn")
+def health_check_gnn() -> dict[str, object]:
+    """Check if GNN model is loaded and ready."""
+    router_gnn = GNNRouter()
+    is_loaded = router_gnn.try_load_model()
+    return {
+        "status": "ok" if is_loaded else "model_not_found",
+        "gnn_trained": is_loaded,
+        "message": "GNN model is ready" if is_loaded else "Run 'python -m ml.train_gnn' to train"
+    }
+
+
 def _run_algorithm(
     algorithm: AlgorithmName,
     state: NetworkState,
@@ -378,6 +392,7 @@ def _run_algorithm(
         "bellman_ford": bellman_ford_route,
         "aco": AntColonyRouter().find_path,
         "rl": RLRouter().predict,
+        "gnn": GNNRouter().predict,
     }
     if algorithm not in route_finders:
         raise HTTPException(
