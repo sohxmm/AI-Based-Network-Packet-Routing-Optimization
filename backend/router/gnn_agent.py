@@ -23,6 +23,42 @@ _DEFAULT_MODEL_PATH = (
 class GNNRouter:
     """Route packets using a trained Graph Neural Network (GNN) model."""
 
+def _load_balanced_cost(self, state: NetworkState, path: list[str]) -> float:
+    """
+    Cost function that balances load across the network.
+    Unlike Dijkstra which only sees per-path cost, this penalizes
+    paths that go through already-congested areas of the network.
+    """
+    lookup = {
+        frozenset((link.source, link.target)): link
+        for link in state.links
+    }
+    path_links = [
+        lookup[frozenset((path[i], path[i + 1]))]
+        for i in range(len(path) - 1)
+        if frozenset((path[i], path[i + 1])) in lookup
+    ]
+    if not path_links:
+        return float("inf")
+
+    # Standard latency cost
+    latency = sum(
+        lnk.base_latency * (1 + 4 * lnk.utilization ** 2)
+        for lnk in path_links
+    )
+
+    # Extra penalty for bottleneck links (>70% util)
+    max_util = max(lnk.utilization for lnk in path_links)
+    bottleneck_penalty = max(0.0, max_util - 0.7) * 100.0
+
+    # Load balancing: penalize if path util >> network average
+    all_utils = [lnk.utilization for lnk in state.links]
+    network_mean = sum(all_utils) / len(all_utils) if all_utils else 0.0
+    path_mean = sum(lnk.utilization for lnk in path_links) / len(path_links)
+    imbalance_penalty = max(0.0, path_mean - network_mean) * 50.0
+
+    return latency + bottleneck_penalty + imbalance_penalty
+
     def __init__(self, k_paths: int = 5, device: str | None = None) -> None:
         self._k_paths = k_paths
         self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
@@ -71,7 +107,7 @@ class GNNRouter:
             path = self._gnn_select_path(state, src, dst, candidate_paths)
         else:
             # Fallback to the congestion-aware Dijkstra heuristic
-            path = min(candidate_paths, key=lambda p: self._path_cost(state, p))
+            path = min(candidate_paths, key=lambda p: self._load_balanced_cost(state, p))
 
         return RoutingDecision(
             source=src,

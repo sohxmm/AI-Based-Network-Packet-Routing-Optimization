@@ -7,7 +7,8 @@ class AppState:
     """Hold singleton services used by REST and future WebSocket handlers."""
 
     def __init__(self) -> None:
-        self.simulator = NetworkSimulator()
+        self.simulator = NetworkSimulator(num_nodes=25, seed=42)
+
 
 
 app_state = AppState()

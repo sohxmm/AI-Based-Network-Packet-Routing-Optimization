@@ -132,6 +132,7 @@ class GNNRouter:
     # Inference                                                           #
     # ------------------------------------------------------------------ #
 
+    
     def predict(self, state: NetworkState, src: str, dst: str) -> RoutingDecision:
         """Return the best routing decision for the given (src, dst) pair.
 
@@ -153,7 +154,7 @@ class GNNRouter:
             path = self._gnn_select_path(state, candidate_paths)
         else:
             # Heuristic fallback: pick path with lowest congestion-adjusted cost
-            path = min(candidate_paths, key=lambda p: _path_cost(state, p))
+            path = min(candidate_paths, key=lambda p: _load_balanced_cost(state, p))
 
         return RoutingDecision(
             source=src,
@@ -304,6 +305,26 @@ def _path_cost(state: NetworkState, path: list[str]) -> float:
         for i in range(len(path) - 1)
         if frozenset((path[i], path[i + 1])) in lookup
     )
+def _load_balanced_cost(state: NetworkState, path: list[str]) -> float:
+    """Load-balancing aware cost — penalizes congested paths and bottleneck links."""
+    lookup = {frozenset((link.source, link.target)): link for link in state.links}
+    path_links = [
+        lookup[frozenset((path[i], path[i + 1]))]
+        for i in range(len(path) - 1)
+        if frozenset((path[i], path[i + 1])) in lookup
+    ]
+    if not path_links:
+        return float("inf")
+
+    latency = sum(lnk.base_latency * (1 + 4 * lnk.utilization ** 2) for lnk in path_links)
+    max_util = max(lnk.utilization for lnk in path_links)
+    bottleneck_penalty = max(0.0, max_util - 0.7) * 100.0
+    all_utils = [lnk.utilization for lnk in state.links]
+    network_mean = sum(all_utils) / len(all_utils) if all_utils else 0.0
+    path_mean = sum(lnk.utilization for lnk in path_links) / len(path_links)
+    imbalance_penalty = max(0.0, path_mean - network_mean) * 50.0
+    return latency + bottleneck_penalty + imbalance_penalty
+
 
 
 def _average_path_utilization(state: NetworkState, path: list[str]) -> float:

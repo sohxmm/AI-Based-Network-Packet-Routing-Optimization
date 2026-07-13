@@ -85,7 +85,7 @@ class NetworkRoutingEnv(gym.Env):
 
     def __init__(
         self,
-        num_nodes: int = 10,
+        num_nodes: int = 100,
         seed: int = 42,
         k_paths: int = _K_PATHS,
         episode_steps: int = _EPISODE_STEPS,
@@ -196,50 +196,68 @@ class NetworkRoutingEnv(gym.Env):
         if not self._current_paths:
             self._current_paths = [[src, dst]]
 
-    def _compute_reward(self, action: int, state) -> float:
-        """Penalise high latency, high utilisation, and packet loss.
+def _compute_reward(self, action: int, state) -> float:
+    """
+    New reward function that GNN/RL can optimize but Dijkstra cannot:
+    - Penalizes path latency (same as before)
+    - Penalizes congestion on chosen path (same as before)
+    - NEW: Penalizes GLOBAL network load variance (load balancing)
+    - NEW: Penalizes the single most overloaded link in the network
+    These last two terms give RL a genuinely different objective from Dijkstra,
+    which only sees per-path cost and has no concept of global load distribution.
+    """
+    paths = self._current_paths
+    if not paths or action >= len(paths):
+        return -self.CONGESTION_PENALTY
 
-        All components are normalised to [0, 1] before weighting so that
-        the reward signal is bounded and stable for PPO.
-        """
-        paths = self._current_paths
-        if not paths or action >= len(paths):
-            return -self.CONGESTION_PENALTY
+    path = paths[action]
+    link_lookup = {
+        frozenset((lnk.source, lnk.target)): lnk
+        for lnk in state.links
+    }
 
-        path = paths[action]
-        link_lookup = {
-            frozenset((lnk.source, lnk.target)): lnk
-            for lnk in state.links
-        }
+    path_links = []
+    for i in range(len(path) - 1):
+        key = frozenset((path[i], path[i + 1]))
+        if key in link_lookup:
+            path_links.append(link_lookup[key])
 
-        path_links = []
-        for i in range(len(path) - 1):
-            key = frozenset((path[i], path[i + 1]))
-            if key in link_lookup:
-                path_links.append(link_lookup[key])
+    if not path_links:
+        return -self.CONGESTION_PENALTY
 
-        if not path_links:
-            return -self.CONGESTION_PENALTY
+    # --- Original per-path terms ---
+    mean_util = float(np.mean([lnk.utilization for lnk in path_links]))
+    mean_loss = float(np.mean([lnk.packet_loss_rate for lnk in path_links]))
+    total_latency_raw = sum(
+        lnk.base_latency * (1 + 4 * lnk.utilization ** 2)
+        for lnk in path_links
+    )
+    norm_latency = float(np.clip(total_latency_raw / _MAX_LATENCY_MS, 0.0, 1.0))
+    norm_loss = float(np.clip(mean_loss / max(_MAX_LOSS, 1e-9), 0.0, 1.0))
 
-        # Normalised metrics on chosen path
-        mean_util = float(np.mean([lnk.utilization for lnk in path_links]))
-        mean_loss = float(np.mean([lnk.packet_loss_rate for lnk in path_links]))
-        total_latency_raw = sum(
-            lnk.base_latency * (1 + 4 * lnk.utilization ** 2)
-            for lnk in path_links
-        )
-        norm_latency = float(np.clip(total_latency_raw / _MAX_LATENCY_MS, 0.0, 1.0))
-        norm_loss = float(np.clip(mean_loss / max(_MAX_LOSS, 1e-9), 0.0, 1.0))
+    reward = -(
+        self.W_LATENCY * norm_latency
+        + self.W_UTIL * mean_util
+        + self.W_LOSS * norm_loss
+    )
 
-        # Base reward
-        reward = -(
-            self.W_LATENCY * norm_latency
-            + self.W_UTIL * mean_util
-            + self.W_LOSS * norm_loss
-        )
+    # Extra penalty for congested links on chosen path
+    congested = sum(1 for lnk in path_links if lnk.utilization > self.CONGESTION_THRESHOLD)
+    reward -= congested * self.CONGESTION_PENALTY * 0.1
 
-        # Extra penalty for highly congested links on the path
-        congested = sum(1 for lnk in path_links if lnk.utilization > self.CONGESTION_THRESHOLD)
-        reward -= congested * self.CONGESTION_PENALTY * 0.1
+    # --- NEW: Global load balancing terms ---
+    all_utils = [lnk.utilization for lnk in state.links]
 
-        return float(reward)
+    # Penalize high VARIANCE across all links — Dijkstra ignores this entirely
+    # High variance means some links are overloaded while others are idle
+    util_variance = float(np.var(all_utils))
+    reward -= 0.4 * util_variance
+
+    # Penalize the single worst link in the network heavily
+    # Dijkstra may route through the cheapest path but inadvertently
+    # push one link to 95%+ utilization — RL learns to avoid this
+    max_util = float(max(all_utils))
+    if max_util > 0.8:
+        reward -= 0.5 * (max_util - 0.8)  # only penalize above 80% threshold
+
+    return float(reward)

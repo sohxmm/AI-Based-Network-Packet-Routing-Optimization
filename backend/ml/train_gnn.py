@@ -8,6 +8,7 @@ import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import numpy as np
 
 # Ensure backend root is on sys.path
 _BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -45,18 +46,59 @@ def find_candidate_paths(simulator: NetworkSimulator, src: str, dst: str, limit:
 
 
 def get_path_cost(simulator: NetworkSimulator, path: list[str]) -> float:
-    """Calculate the actual congestion-adjusted cost of a path."""
-    cost = 0.0
+    """
+    Training target combining:
+    1. Congestion-adjusted latency (same as Dijkstra)
+    2. Max utilization on path (Dijkstra ignores this)
+    3. Utilization variance contribution (load balancing signal)
+
+    This gives the GNN a different objective to minimize than Dijkstra,
+    so it learns to balance load rather than just find the shortest path.
+    """
+    state = simulator.get_state()
+    link_lookup = {}
+    for link in state.links:
+        key = frozenset((link.source, link.target))
+        link_lookup[key] = link
+
+    path_links = []
     for i in range(len(path) - 1):
-        cost += simulator.get_edge_weight(path[i], path[i + 1])
-    return cost
+        key = frozenset((path[i], path[i + 1]))
+        if key in link_lookup:
+            path_links.append(link_lookup[key])
+
+    if not path_links:
+        return float("inf")
+
+    # Component 1: congestion-adjusted latency
+    latency_cost = sum(
+        lnk.base_latency * (1 + 4 * lnk.utilization ** 2)
+        for lnk in path_links
+    )
+
+    # Component 2: max utilization on path — avoid bottleneck links
+    max_util_on_path = max(lnk.utilization for lnk in path_links)
+
+    # Component 3: utilization variance contribution
+    all_utils = [lnk.utilization for lnk in state.links]
+    network_mean_util = float(np.mean(all_utils))
+    path_mean_util = float(np.mean([lnk.utilization for lnk in path_links]))
+    load_imbalance = max(0.0, path_mean_util - network_mean_util)
+
+    # Weighted combination — Dijkstra only optimizes component 1
+    combined_cost = (
+        0.5 * latency_cost / 200.0
+        + 0.3 * max_util_on_path
+        + 0.2 * load_imbalance
+    )
+    return combined_cost
 
 
 def generate_dataset(simulator: NetworkSimulator, num_samples: int = 1500) -> list[dict]:
     """Advance simulator and sample random routing tasks to build dataset."""
     dataset = []
     print(f"Generating {num_samples} training samples from network simulator...")
-    
+
     # Run the simulator to populate initial traffic
     for _ in range(50):
         simulator.step()
@@ -64,7 +106,7 @@ def generate_dataset(simulator: NetworkSimulator, num_samples: int = 1500) -> li
     while len(dataset) < num_samples:
         state = simulator.step()
         nodes = list(state.nodes)
-        
+
         # Select 5 random src-dst pairs at this step
         for _ in range(5):
             src, dst = random.sample(nodes, 2)
@@ -103,11 +145,9 @@ def generate_dataset(simulator: NetworkSimulator, num_samples: int = 1500) -> li
                     float(link.packet_loss_rate) / 0.06,
                     float(link.base_latency) / 25.0,
                 ]
-                # u -> v
                 edges_src.append(u_idx)
                 edges_dst.append(v_idx)
                 edge_attr_list.append(attr)
-                # v -> u
                 edges_src.append(v_idx)
                 edges_dst.append(u_idx)
                 edge_attr_list.append(attr)
@@ -125,7 +165,7 @@ def generate_dataset(simulator: NetworkSimulator, num_samples: int = 1500) -> li
 
             if len(dataset) >= num_samples:
                 break
-                
+
     return dataset
 
 
@@ -136,23 +176,22 @@ def main() -> None:
     print("GNN Routing Model Training")
     print("=" * 60)
 
-    # 1. Initialize simulator (25 nodes, which is the scaled default)
-    sim = NetworkSimulator(num_nodes=25, seed=42)
+    sim = NetworkSimulator(num_nodes=100, seed=42)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Compute Device: {device}")
 
-    # 2. Generate training and validation data
-    train_data = generate_dataset(sim, num_samples=1600)
-    val_data = generate_dataset(sim, num_samples=400)
+    # Generate training and validation data
+    train_data = generate_dataset(sim, num_samples=3000)
+    val_data = generate_dataset(sim, num_samples=750)
 
-    # 3. Initialize GNN Model
-    model = GNNRouterModel(node_dim=3, edge_dim=4, hidden_dim=32).to(device)
-    optimizer = optim.Adam(model.parameters(), lr=0.005)
+    # Initialize GNN Model
+    model = GNNRouterModel(node_dim=3, edge_dim=4, hidden_dim=64).to(device)
+    optimizer = optim.Adam(model.parameters(), lr=0.003)
     criterion = nn.MSELoss()
 
-    epochs = 40
-    print(f"\nTraining GNN for {epochs} epochs...")
+    epochs = 60
     t0 = time.time()
+    print(f"\nTraining GNN for {epochs} epochs...")
 
     for epoch in range(1, epochs + 1):
         model.train()
@@ -196,13 +235,13 @@ def main() -> None:
     elapsed = time.time() - t0
     print(f"\nTraining complete in {elapsed:.1f}s")
 
-    # 4. Save trained weights
+    # Save trained weights
     torch.save(
         {
             "state_dict": model.state_dict(),
             "node_dim": 3,
             "edge_dim": 4,
-            "hidden_dim": 32
+            "hidden_dim": 64
         },
         _FINAL_MODEL_PATH
     )
