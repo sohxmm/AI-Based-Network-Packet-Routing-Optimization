@@ -12,21 +12,24 @@ if __name__ == "__main__":
 from router.aco import AntColonyRouter
 from router.bellman_ford import find_route as bellman_ford_route
 from router.dijkstra import find_route as dijkstra_route
+from router.gnn_router import GNNRouter
 from router.rl_agent import RLRouter
 from simulator.network_sim import NetworkSimulator
 
 
 def main() -> None:
-    """Run 100 route decisions across all four algorithms and report success."""
+    """Run 100 route decisions across all five algorithms and report success."""
     simulator = NetworkSimulator(seed=42)
     rng = random.Random(42)
     aco_router = AntColonyRouter()
     rl_router = RLRouter()
+    gnn_router = GNNRouter()
     algorithms = {
         "dijkstra": dijkstra_route,
         "bellman_ford": bellman_ford_route,
         "aco": aco_router.find_path,
         "rl": rl_router.predict,
+        "gnn": gnn_router.predict,
     }
     totals = {name: {"success": 0, "latency": 0.0, "count": 0} for name in algorithms}
 
@@ -62,3 +65,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

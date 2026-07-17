@@ -23,42 +23,6 @@ _DEFAULT_MODEL_PATH = (
 class GNNRouter:
     """Route packets using a trained Graph Neural Network (GNN) model."""
 
-def _load_balanced_cost(self, state: NetworkState, path: list[str]) -> float:
-    """
-    Cost function that balances load across the network.
-    Unlike Dijkstra which only sees per-path cost, this penalizes
-    paths that go through already-congested areas of the network.
-    """
-    lookup = {
-        frozenset((link.source, link.target)): link
-        for link in state.links
-    }
-    path_links = [
-        lookup[frozenset((path[i], path[i + 1]))]
-        for i in range(len(path) - 1)
-        if frozenset((path[i], path[i + 1])) in lookup
-    ]
-    if not path_links:
-        return float("inf")
-
-    # Standard latency cost
-    latency = sum(
-        lnk.base_latency * (1 + 4 * lnk.utilization ** 2)
-        for lnk in path_links
-    )
-
-    # Extra penalty for bottleneck links (>70% util)
-    max_util = max(lnk.utilization for lnk in path_links)
-    bottleneck_penalty = max(0.0, max_util - 0.7) * 100.0
-
-    # Load balancing: penalize if path util >> network average
-    all_utils = [lnk.utilization for lnk in state.links]
-    network_mean = sum(all_utils) / len(all_utils) if all_utils else 0.0
-    path_mean = sum(lnk.utilization for lnk in path_links) / len(path_links)
-    imbalance_penalty = max(0.0, path_mean - network_mean) * 50.0
-
-    return latency + bottleneck_penalty + imbalance_penalty
-
     def __init__(self, k_paths: int = 5, device: str | None = None) -> None:
         self._k_paths = k_paths
         self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
@@ -71,8 +35,12 @@ def _load_balanced_cost(self, state: NetworkState, path: list[str]) -> float:
         if not candidate.exists():
             raise FileNotFoundError(f"GNN model not found at {candidate}.")
 
-        self._model = GNNRouterModel(node_dim=3, edge_dim=4, hidden_dim=32)
         checkpoint = torch.load(candidate, map_location=self.device)
+        self._model = GNNRouterModel(
+            node_dim=checkpoint.get("node_dim", 3),
+            edge_dim=checkpoint.get("edge_dim", 4),
+            hidden_dim=checkpoint.get("hidden_dim", 64),
+        )
         self._model.load_state_dict(checkpoint["state_dict"])
         self._model.to(self.device)
         self._model.eval()
@@ -118,6 +86,42 @@ def _load_balanced_cost(self, state: NetworkState, path: list[str]) -> float:
             avg_utilization=self._average_path_utilization(state, path),
             success=True,
         )
+
+    def _load_balanced_cost(self, state: NetworkState, path: list[str]) -> float:
+        """
+        Cost function that balances load across the network.
+        Unlike Dijkstra which only sees per-path cost, this penalizes
+        paths that go through already-congested areas of the network.
+        """
+        lookup = {
+            frozenset((link.source, link.target)): link
+            for link in state.links
+        }
+        path_links = [
+            lookup[frozenset((path[i], path[i + 1]))]
+            for i in range(len(path) - 1)
+            if frozenset((path[i], path[i + 1])) in lookup
+        ]
+        if not path_links:
+            return float("inf")
+
+        # Standard latency cost
+        latency = sum(
+            lnk.base_latency * (1 + 4 * lnk.utilization ** 2)
+            for lnk in path_links
+        )
+
+        # Extra penalty for bottleneck links (>70% util)
+        max_util = max(lnk.utilization for lnk in path_links)
+        bottleneck_penalty = max(0.0, max_util - 0.7) * 100.0
+
+        # Load balancing: penalize if path util >> network average
+        all_utils = [lnk.utilization for lnk in state.links]
+        network_mean = sum(all_utils) / len(all_utils) if all_utils else 0.0
+        path_mean = sum(lnk.utilization for lnk in path_links) / len(path_links)
+        imbalance_penalty = max(0.0, path_mean - network_mean) * 50.0
+
+        return latency + bottleneck_penalty + imbalance_penalty
 
     def _gnn_select_path(
         self, state: NetworkState, src: str, dst: str, candidate_paths: list[list[str]]

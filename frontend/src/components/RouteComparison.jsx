@@ -28,6 +28,7 @@ function RouteComparison({ networkState, comparison, isLoading, onCompare }) {
     else if (rawName.includes("bellman")) shortName = "Bellman-Ford";
     else if (rawName.includes("aco")) shortName = "ACO";
     else if (rawName.includes("ri") || rawName === "rl") shortName = "RL";
+    else if (rawName === "gnn") shortName = "GNN";
 
     return {
       algorithm: shortName,

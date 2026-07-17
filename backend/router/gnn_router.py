@@ -151,7 +151,7 @@ class GNNRouter:
             return self._failed_decision(src, dst)
 
         if self._model is not None:
-            path = self._gnn_select_path(state, candidate_paths)
+            path = self._gnn_select_path(state, src, dst, candidate_paths)
         else:
             # Heuristic fallback: pick path with lowest congestion-adjusted cost
             path = min(candidate_paths, key=lambda p: _load_balanced_cost(state, p))
@@ -167,10 +167,10 @@ class GNNRouter:
         )
 
     def _gnn_select_path(
-        self, state: NetworkState, candidate_paths: list[list[str]]
+        self, state: NetworkState, src: str, dst: str, candidate_paths: list[list[str]]
     ) -> list[str]:
         """Use the GNN to score and select the best candidate path."""
-        x, edge_index, edge_attr, paths_idx = _build_graph_data(state, candidate_paths)
+        x, edge_index, edge_attr, paths_idx = _build_graph_data(state, candidate_paths, src, dst)
 
         # Move tensors to device
         x = x.to(self._device)
@@ -202,7 +202,8 @@ class GNNRouter:
 # ---------------------------------------------------------------------------
 
 def _build_graph_data(
-    state: NetworkState, candidate_paths: list[list[str]]
+    state: NetworkState, candidate_paths: list[list[str]],
+    src: str = "", dst: str = "",
 ) -> tuple[Any, Any, Any, list[list[int]]]:
     """Build node features, edge index, and edge attributes for the GNN."""
     import torch as torch_module  # noqa: PLC0415
@@ -221,9 +222,8 @@ def _build_graph_data(
     x_list = []
     for i, node in enumerate(nodes):
         # Node features: [is_src, is_dst, degree_norm]
-        # These will be updated per-inference if we pass src/dst
-        is_src = 0.0
-        is_dst = 0.0
+        is_src = 1.0 if node == src else 0.0
+        is_dst = 1.0 if node == dst else 0.0
         deg = float(degrees[i]) / max_deg
         x_list.append([is_src, is_dst, deg])
 
