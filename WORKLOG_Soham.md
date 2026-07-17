@@ -1,6 +1,6 @@
 # Internship Work Log
 
-Total hours: 83.0
+Total hours: 87.0
 
 ## 09/06/2026
 
@@ -236,3 +236,45 @@ Tasks:
 
 Status:
 - Dashboard features complete, robust custom theming deployed and verified
+
+## 14/07/2026
+
+Hours: 5.0
+
+Tasks:
+- Analyzed and mapped the GNN branch architecture, including model definition, training logic, inference, and API integration
+- Fixed critical indentation bugs in `backend/router/gnn_agent.py` and properly aligned the `GNNRouter` class logic
+- Investigated and corrected `hidden_dim` initialization to dynamically read from the model checkpoint instead of hardcoding
+- Fixed node features bug in `gnn_router.py` where `is_source` and `is_destination` features were hardcoded to 0.0 during inference
+- Resolved structural indentation issues in `backend/ml/rl_environment.py` for the `_compute_reward` function
+
+Status:
+- GNN codebase debugged and fully prepared for model training
+
+## 15/07/2026
+
+Hours: 5.5
+
+Tasks:
+- Installed and configured necessary ML dependencies (`torch`, `gymnasium`, `stable-baselines3`, `scikit-learn`, `pandas`) within the project virtual environment
+- Executed the GNN model training pipeline (`train_gnn.py`), generating 3,000 training samples and 750 validation samples using the 100-node network simulator
+- Trained the `GNNRouterModel` for 60 epochs
+- Achieved significant loss reduction: Training MSE reduced by 97% (0.8270 to 0.0257) and Validation MSE reduced by 72% (0.1022 to 0.0286)
+- Exported and saved the fully trained model to `backend/ml/models/gnn_router.pt`
+
+Status:
+- GNN model successfully trained, serialized, and ready for production inference
+
+## 16/07/2026
+
+Hours: 5.0
+
+Tasks:
+- Developed a comprehensive GNN test suite (`test_gnn.py`) covering model architecture (MessagePassingLayer shapes), training pipeline validation, empty-path handling, and inference fallback heuristics
+- Resolved Windows `cp1252` encoding issues with ASCII representations in the test suite
+- Added integration tests in `test_integration.py` to verify GNN routing alongside Dijkstra, Bellman-Ford, ACO, and RL, achieving a 100% success rate with ~35.05ms average latency
+- Updated frontend dashboard components; added GNN algorithm label mapping in `RouteComparison.jsx` so it renders correctly in the bar chart
+- Finalized branch, staged, and committed all GNN updates
+
+Status:
+- GNN branch fully tested, integrated into frontend, and pushed to the remote repository

@@ -1,5 +1,7 @@
 # Internship Work Log — Sneha Ramamurthy
 
+Total Hours: 97.0
+
 ## 2026-06-05
 **Hours:** 4.0
 
@@ -387,16 +389,5 @@
 **Status:** Color system foundation laid using the team's chosen palette.
 
 ---
-## 2026-07-03
-**Hours:** 3.5
 
-**Tasks:**
-
--Tried better colour cominations for the simulation algorithms and the congestion heatmaps on older theme and layout.
--Pulled the main branch to check the updated changes and finalize on the theme and UI/UX layout and themes .
-
-**Phase:** Week 5 (UI/UX improvements)
-**Status:** Color system foundation laid using the team's chosen palette.
-
----
 
