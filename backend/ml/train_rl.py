@@ -1,4 +1,4 @@
-﻿"""train_rl.py â€“ Train a PPO agent on NetworkRoutingEnv.
+"""train_rl.py â€“ Train a PPO agent on NetworkRoutingEnv.
 
 Usage (from the backend/ directory):
     python -m ml.train_rl
@@ -110,7 +110,6 @@ def main() -> None:
         ent_coef=0.01,
         vf_coef=0.5,
         max_grad_norm=0.5,
-        tensorboard_log=str(_LOG_DIR),
         device=device,
         verbose=1,
     )
@@ -124,7 +123,6 @@ def main() -> None:
     model.learn(
         total_timesteps=total_timesteps,
         callback=[checkpoint_callback, eval_callback],
-        tb_log_name="ppo_routing",
         progress_bar=False,
     )
     elapsed = time.time() - t0

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from dataclasses import asdict
 from math import isfinite
 from typing import Callable, Literal
@@ -11,14 +12,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 
-from api.state import get_simulator
+from api.state import get_simulator, get_aco_router, get_rl_router, get_gnn_router
 from ml.congestion_lstm import CongestionPredictor
-from router.aco import AntColonyRouter
 from router.bellman_ford import find_route as bellman_ford_route
 from router.dijkstra import find_route as dijkstra_route
-from router.gnn_router import GNNRouter
-from router.rl_agent import RLRouter
-from simulator.data_models import NetworkState, RoutingDecision
+from simulator.data_models import LinkState, NetworkState, RoutingDecision
 
 from db.database import get_db, AsyncSessionLocal
 from db.models import RoutingEvent, NetworkSnapshot
@@ -30,6 +28,17 @@ AlgorithmName = Literal["dijkstra", "bellman_ford", "aco", "rl", "gnn"]
 RouteFinder = Callable[[NetworkState, str, str], RoutingDecision]
 DEFAULT_ALGORITHMS: list[AlgorithmName] = ["dijkstra", "bellman_ford", "aco", "rl", "gnn"]
 congestion_predictor = CongestionPredictor()
+
+# Try to load the trained LSTM model at module level
+try:
+    from pathlib import Path as _Path
+    _LSTM_MODEL = _Path(__file__).resolve().parents[1] / "ml" / "models" / "congestion_lstm.pt"
+    if _LSTM_MODEL.exists():
+        congestion_predictor.load(str(_LSTM_MODEL))
+        print("[Routes] Loaded congestion LSTM model")
+except Exception as exc:
+    print(f"[Routes] Could not load congestion LSTM model: {exc}")
+
 forecast_history: list[list[float]] = []
 
 
@@ -107,6 +116,7 @@ class RouteRequest(BaseModel):
     source: str = Field(..., min_length=1, examples=["R1"])
     destination: str = Field(..., min_length=1, examples=["R5"])
     algorithm: AlgorithmName = "dijkstra"
+    use_forecast: bool = False
 
 
 class RouteCompareRequest(BaseModel):
@@ -115,6 +125,7 @@ class RouteCompareRequest(BaseModel):
     source: str = Field(..., min_length=1, examples=["R1"])
     destination: str = Field(..., min_length=1, examples=["R5"])
     algorithms: list[AlgorithmName] | None = None
+    use_forecast: bool = False
 
 
 class LinkRequest(BaseModel):
@@ -197,7 +208,15 @@ async def route_packet(
     """Calculate a route through the current network using one algorithm."""
     state = get_simulator().get_state()
     _validate_nodes(state, request.source, request.destination)
-    decision = _run_algorithm(request.algorithm, state, request.source, request.destination)
+
+    # Use forecast state for GNN/RL when requested
+    routing_state = state
+    if request.use_forecast and request.algorithm in ("gnn", "rl"):
+        forecast_state = _build_forecast_state(state)
+        if forecast_state is not None:
+            routing_state = forecast_state
+
+    decision = _run_algorithm(request.algorithm, routing_state, request.source, request.destination)
     
     await save_routing_event(decision, state.step_count)
     await broadcast_routing_event(decision)
@@ -216,7 +235,11 @@ async def compare_routes(
     request: RouteCompareRequest,
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, object]:
-    """Compare routing decisions across multiple algorithms."""
+    """Compare routing decisions across multiple algorithms.
+
+    When use_forecast is True, GNN and RL also run on a forecasted state
+    and produce extra results labelled gnn_predictive / rl_predictive.
+    """
     state = get_simulator().get_state()
     _validate_nodes(state, request.source, request.destination)
     algorithms = request.algorithms or DEFAULT_ALGORITHMS
@@ -224,6 +247,7 @@ async def compare_routes(
     decisions = []
     has_any_success = False
     
+    # 1. Reactive pass — all algorithms on current state
     for algorithm in algorithms:
         decision = _run_algorithm(algorithm, state, request.source, request.destination)
         await save_routing_event(decision, state.step_count)
@@ -233,7 +257,21 @@ async def compare_routes(
             has_any_success = True
             
         decisions.append(_decision_to_dict(decision))
-        
+
+    # 2. Predictive pass — GNN and RL on forecasted state
+    if request.use_forecast:
+        forecast_state = _build_forecast_state(state)
+        if forecast_state is not None:
+            for algo_name in ("gnn", "rl"):
+                if algo_name in algorithms:
+                    pred_decision = _run_algorithm(algo_name, forecast_state, request.source, request.destination)
+                    # Re-label the algorithm so the frontend can distinguish
+                    pred_dict = _decision_to_dict(pred_decision)
+                    pred_dict["algorithm"] = f"{algo_name}_predictive"
+                    if pred_decision.success:
+                        has_any_success = True
+                    decisions.append(pred_dict)
+
     if not has_any_success:
         raise HTTPException(
             status_code=400,
@@ -244,6 +282,7 @@ async def compare_routes(
         "source": request.source,
         "destination": request.destination,
         "step_count": state.step_count,
+        "use_forecast": request.use_forecast,
         "results": decisions,
     }
 
@@ -291,8 +330,8 @@ async def get_metrics_summary(
         "packet_delivery_rate": packet_delivery_rate,
         "congestion_events": congestion_events,
         "active_algorithm": algorithm or "dijkstra",
-        "rl_trained": RLRouter().is_trained,
-        "gnn_trained": GNNRouter().is_trained,
+        "rl_trained": get_rl_router().is_trained,
+        "gnn_trained": get_gnn_router().is_trained,
     }
 
 
@@ -371,8 +410,8 @@ def get_congestion_forecast(steps: int = 3) -> dict[str, object]:
 @router.get("/health/gnn")
 def health_check_gnn() -> dict[str, object]:
     """Check if GNN model is loaded and ready."""
-    router_gnn = GNNRouter()
-    is_loaded = router_gnn.try_load_model()
+    gnn = get_gnn_router()
+    is_loaded = gnn.is_trained
     return {
         "status": "ok" if is_loaded else "model_not_found",
         "gnn_trained": is_loaded,
@@ -390,9 +429,9 @@ def _run_algorithm(
     route_finders: dict[AlgorithmName, RouteFinder] = {
         "dijkstra": dijkstra_route,
         "bellman_ford": bellman_ford_route,
-        "aco": AntColonyRouter().find_path,
-        "rl": RLRouter().predict,
-        "gnn": GNNRouter().predict,
+        "aco": get_aco_router().find_path,
+        "rl": get_rl_router().predict,
+        "gnn": get_gnn_router().predict,
     }
     if algorithm not in route_finders:
         raise HTTPException(
@@ -400,6 +439,46 @@ def _run_algorithm(
             detail=f"Invalid algorithm name: {algorithm}. Supported: {list(route_finders.keys())}"
         )
     return route_finders[algorithm](state, source, destination)
+
+
+def _build_forecast_state(state: NetworkState) -> NetworkState | None:
+    """Build a NetworkState with forecasted link utilizations from the LSTM.
+
+    Returns None if insufficient history or no trained LSTM model.
+    """
+    # Ensure current snapshot is in the history
+    current_snapshot = [link.utilization for link in state.links]
+    forecast_history.append(current_snapshot)
+    del forecast_history[:-congestion_predictor.seq_len]
+
+    if len(forecast_history) < congestion_predictor.seq_len:
+        return None
+    if congestion_predictor.model is None:
+        return None
+
+    predicted_utils = congestion_predictor.predict_next(forecast_history)
+
+    # Deep-copy links and override utilization + derived fields
+    new_links = []
+    for i, link in enumerate(state.links):
+        pred_util = predicted_utils[i] if i < len(predicted_utils) else link.utilization
+        pred_util = max(0.0, min(1.0, pred_util))
+        new_links.append(LinkState(
+            source=link.source,
+            target=link.target,
+            base_latency=link.base_latency,
+            bandwidth=link.bandwidth,
+            utilization=pred_util,
+            queue_size=int(pred_util * 100),
+            packet_loss_rate=max(0.0, pred_util - 0.7) * 0.2,
+        ))
+
+    return NetworkState(
+        nodes=list(state.nodes),
+        links=new_links,
+        timestamp=state.timestamp,
+        step_count=state.step_count,
+    )
 
 
 def _sample_algorithm_decisions(

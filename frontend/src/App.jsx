@@ -38,8 +38,8 @@ function App() {
     }, null)?.path ?? [];
   }, [comparison]);
 
-  async function handleCompareRoutes(source, destination) {
-    const result = await compareRoutes({ source, destination });
+  async function handleCompareRoutes(source, destination, useForecast) {
+    const result = await compareRoutes({ source, destination, use_forecast: useForecast });
     if (result) {
       setComparison(result);
     }

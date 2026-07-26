@@ -85,7 +85,7 @@ class NetworkRoutingEnv(gym.Env):
 
     def __init__(
         self,
-        num_nodes: int = 100,
+        num_nodes: int = 25,
         seed: int = 42,
         k_paths: int = _K_PATHS,
         episode_steps: int = _EPISODE_STEPS,

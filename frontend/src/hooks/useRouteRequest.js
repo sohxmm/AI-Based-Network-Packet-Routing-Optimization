@@ -6,7 +6,7 @@ export function useRouteRequest() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const compareRoutes = useCallback(async ({ source, destination, algorithms } = {}) => {
+  const compareRoutes = useCallback(async ({ source, destination, algorithms, use_forecast } = {}) => {
     if (!source || !destination || source === destination) {
       setError("Choose two different routers.");
       return null;
@@ -19,7 +19,7 @@ export function useRouteRequest() {
       const response = await fetch(`${API_BASE_URL}/network/route/compare`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source, destination, algorithms })
+        body: JSON.stringify({ source, destination, algorithms, use_forecast: !!use_forecast })
       });
 
       if (!response.ok) {

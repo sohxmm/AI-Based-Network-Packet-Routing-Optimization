@@ -92,6 +92,7 @@ class RLRouter:
         self._n_links: int | None = None
         self._model_path: Path | None = None
         self._random = random.Random(seed)
+        self.last_used_model: bool = False
 
     # ------------------------------------------------------------------ #
     # Model management                                                    #
@@ -169,9 +170,13 @@ class RLRouter:
 
         if self._model is not None and self._n_links is not None:
             path = self._ppo_select_path(state, candidate_paths)
+            self.last_used_model = True
+            print("[RLRouter] Using trained PPO model")
         else:
             # Heuristic fallback: pick path with lowest congestion-adjusted cost
             path = min(candidate_paths, key=lambda p: _path_cost(state, p))
+            self.last_used_model = False
+            print("[RLRouter] Using heuristic fallback (model not loaded)")
 
         return RoutingDecision(
             source=src,

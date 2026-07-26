@@ -1,6 +1,6 @@
 # Internship Work Log
 
-Total hours: 87.0
+Total hours: 101.0
 
 ## 09/06/2026
 
@@ -278,3 +278,50 @@ Tasks:
 
 Status:
 - GNN branch fully tested, integrated into frontend, and pushed to the remote repository
+
+## 24/07/2026
+
+Hours: 4.5
+
+Tasks:
+- Identified and fixed RL observation shape mismatch: `rl_environment.py` trained PPO on `num_nodes=100` but API uses `num_nodes=25`, causing silent heuristic fallback at inference
+- Changed `NetworkRoutingEnv` default to `num_nodes=25` and retrained PPO model on the correct 25-node topology (500k timesteps)
+- Added `last_used_model` flag and logging to `RLRouter.predict()` to report whether trained PPO policy or heuristic fallback is used on each call
+- Refactored `api/state.py` to hold singleton instances of `AntColonyRouter`, `RLRouter`, and `GNNRouter` (same pattern as `get_simulator()`)
+- Updated `api/routes.py` to use singleton routers instead of creating new instances per request, preserving ACO pheromone state across calls
+- Confirmed `router/gnn_agent.py` has zero imports anywhere in the codebase and deleted the dead duplicate file
+
+Status:
+- All three known bugs fixed; RL model retrained on correct topology and verified loading at inference
+
+## 25/07/2026
+
+Hours: 5.0
+
+Tasks:
+- Implemented predictive routing mode using the existing LSTM congestion predictor (`CongestionPredictor`)
+- Added `_build_forecast_state()` helper in `routes.py` that calls LSTM `predict_next()` and constructs a modified `NetworkState` with forecasted link utilizations
+- Added `use_forecast: bool` parameter to `RouteRequest` and `RouteCompareRequest` Pydantic models
+- Updated `/network/route` endpoint to use forecast state for GNN/RL when `use_forecast=True`
+- Updated `/network/route/compare` to return 7 results when `use_forecast=True`: Dijkstra, Bellman-Ford, ACO (reactive only), GNN reactive, GNN predictive, RL reactive, RL predictive
+- Loaded congestion LSTM model at module level in `routes.py` for zero-latency forecast calls
+- Updated `useRouteRequest.js` hook to accept and forward `use_forecast` parameter in API requests
+
+Status:
+- Predictive routing pipeline fully functional; LSTM forecasts integrated into GNN and RL routing paths
+
+## 26/07/2026
+
+Hours: 4.5
+
+Tasks:
+- Added "Use congestion forecast" toggle switch to `RouteComparison.jsx` with accessible keyboard support
+- Updated algorithm label mapping to handle `gnn_predictive` and `rl_predictive` names with visual "forecast" badge
+- Threaded `useForecast` state through `App.jsx` and `handleCompareRoutes` to the API hook
+- Wrote integration test at `backend/tests/test_predictive_routing.py` covering: congestion burst detection, LSTM prediction accuracy on congested links, forecast state builder validation, and predictive routing avoidance assertion
+- Verified that predictive GNN/RL routes avoid soon-to-be-congested links while Dijkstra routes into them
+- Updated worklog with July 24-26 entries
+
+Status:
+- Predictive routing feature complete with frontend toggle, backend pipeline, and integration test coverage
+

@@ -8,6 +8,7 @@ function RouteComparison({ networkState, comparison, isLoading, onCompare }) {
   const [source, setSource] = useState("R1");
   const [destination, setDestination] = useState("R2");
   const [expandedAlgorithm, setExpandedAlgorithm] = useState(null);
+  const [useForecast, setUseForecast] = useState(false);
 
   const bestAlgorithm = useMemo(() => {
     const successful = comparison?.results?.filter((result) => result.success) ?? [];
@@ -19,16 +20,19 @@ function RouteComparison({ networkState, comparison, isLoading, onCompare }) {
     }, null)?.algorithm;
   }, [comparison]);
 
+  const LABEL_MAP = {
+    dijkstra: "Dijkstra",
+    bellman_ford: "B-Ford",
+    aco: "ACO",
+    rl: "RL",
+    gnn: "GNN",
+    gnn_predictive: "GNN-P",
+    rl_predictive: "RL-P",
+  };
+
   const chartData = (comparison?.results ?? []).map((result) => {
     const rawName = result.algorithm.toLowerCase();
-    
-    // FIX: Shorten names so they can fit side-by-side perfectly straight
-    let shortName = rawName;
-    if (rawName.includes("dijkstra")) shortName = "Dijkstra";
-    else if (rawName.includes("bellman")) shortName = "Bellman-Ford";
-    else if (rawName.includes("aco")) shortName = "ACO";
-    else if (rawName.includes("ri") || rawName === "rl") shortName = "RL";
-    else if (rawName === "gnn") shortName = "GNN";
+    const shortName = LABEL_MAP[rawName] || rawName;
 
     return {
       algorithm: shortName,
@@ -38,11 +42,26 @@ function RouteComparison({ networkState, comparison, isLoading, onCompare }) {
 
   function handleSubmit(event) {
     event.preventDefault();
-    onCompare(source, destination);
+    onCompare(source, destination, useForecast);
   }
 
   function togglePath(algorithm) {
     setExpandedAlgorithm(expandedAlgorithm === algorithm ? null : algorithm);
+  }
+
+  function formatAlgorithmName(name) {
+    const displayName = LABEL_MAP[name.toLowerCase()] || name.replace("_", " ");
+    const isPredictive = name.toLowerCase().includes("predictive");
+    return (
+      <span className="flex items-center gap-1.5">
+        <span className="capitalize">{displayName}</span>
+        {isPredictive && (
+          <span className="rounded bg-blue-500/20 px-1 py-0.5 text-[10px] font-medium text-blue-400">
+            forecast
+          </span>
+        )}
+      </span>
+    );
   }
 
   return (
@@ -77,6 +96,35 @@ function RouteComparison({ networkState, comparison, isLoading, onCompare }) {
           </label>
         </div>
 
+        {/* Forecast toggle */}
+        <label
+          id="forecast-toggle"
+          className="flex cursor-pointer items-center gap-2 text-xs text-app-muted select-none"
+        >
+          <span
+            role="switch"
+            aria-checked={useForecast}
+            tabIndex={0}
+            className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 ${
+              useForecast ? "bg-app-accent" : "bg-app-border"
+            }`}
+            onClick={() => setUseForecast(!useForecast)}
+            onKeyDown={(e) => {
+              if (e.key === " " || e.key === "Enter") {
+                e.preventDefault();
+                setUseForecast(!useForecast);
+              }
+            }}
+          >
+            <span
+              className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform duration-200 ${
+                useForecast ? "translate-x-[18px]" : "translate-x-[3px]"
+              }`}
+            />
+          </span>
+          Use congestion forecast
+        </label>
+
         <button
           className="inline-flex h-9 items-center justify-center gap-2 rounded bg-app-accent px-3 text-sm font-medium text-app-accent-text disabled:cursor-not-allowed disabled:opacity-60"
           type="submit"
@@ -102,7 +150,7 @@ function RouteComparison({ networkState, comparison, isLoading, onCompare }) {
                 key={result.algorithm}
                 className={result.algorithm === bestAlgorithm ? "bg-app-accent/20" : "border-t border-app-border"}
               >
-                <td className="px-3 py-2 capitalize text-app-text">{result.algorithm.replace("_", " ")}</td>
+                <td className="px-3 py-2 text-app-text">{formatAlgorithmName(result.algorithm)}</td>
                 <td className="px-3 py-2 text-app-text">
                   {result.total_latency == null ? "--" : `${result.total_latency.toFixed(1)} ms`}
                 </td>
