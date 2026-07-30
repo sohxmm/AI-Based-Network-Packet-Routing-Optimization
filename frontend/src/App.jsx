@@ -8,6 +8,8 @@ import RouteComparison from "./components/RouteComparison.jsx";
 import TopologyGraph from "./components/TopologyGraph.jsx";
 import LeftPanel from "./components/LeftPanel.jsx";
 import RightPanel from "./components/RightPanel.jsx";
+import BenchmarkReport, { BenchmarkResultView } from "./components/BenchmarkReport.jsx";
+import ExperimentBuilder from "./components/ExperimentBuilder.jsx";
 import { useNetworkStream } from "./hooks/useNetworkStream.js";
 import { useRouteRequest } from "./hooks/useRouteRequest.js";
 
@@ -15,7 +17,11 @@ function App() {
   const { networkState, isConnected, error: streamError } = useNetworkStream();
   const { compareRoutes, postSimulatorAction, isLoading, error: actionError } = useRouteRequest();
   const [comparison, setComparison] = useState(null);
-  const [theme, setTheme] = useState("dracula");
+  const [theme, setTheme] = useState("github-dark");
+  
+  // To show experiment results in the unified layout
+  const [experimentResults, setExperimentResults] = useState(null);
+  const [showBenchmark, setShowBenchmark] = useState(false);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -47,7 +53,7 @@ function App() {
 
   return (
     <main className="min-h-screen transition-colors duration-300">
-      <section className="mx-auto flex min-h-screen max-w-[1600px] flex-col gap-4 px-4 py-4">
+      <section className="mx-auto flex min-h-screen max-w-[1800px] flex-col gap-4 px-4 py-4">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-app-border pb-3">
           <div>
             <h1 className="text-xl font-semibold">
@@ -58,6 +64,12 @@ function App() {
             </p>
           </div>
           <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setShowBenchmark(!showBenchmark)}
+              className="text-sm rounded border border-app-border bg-app-input-bg px-3 py-1 hover:bg-app-panel transition-colors text-app-text"
+            >
+              {showBenchmark ? "Hide Benchmark Report" : "📊 View Benchmark Report"}
+            </button>
             <span
               className={`rounded px-2 py-1 text-xs font-medium ${
                 isConnected ? "bg-emerald-400 text-emerald-950" : "bg-amber-300 text-amber-950"
@@ -94,20 +106,25 @@ function App() {
           </div>
         )}
 
-        <div className="grid flex-1 gap-4 lg:grid-cols-[250px_minmax(0,1fr)_320px]">
-          {/* Left Column */}
+        <div className="grid flex-1 gap-4 lg:grid-cols-[300px_minmax(0,1fr)_320px]">
+          {/* Left Column: Experiment Builder & Left Panel */}
           <div className="flex flex-col gap-4">
-            <MetricsPanel networkState={networkState} comparison={comparison} />
+            <ExperimentBuilder onResults={setExperimentResults} />
             <LeftPanel networkState={networkState} />
           </div>
 
-          {/* Center Column */}
+          {/* Center Column: Topology & Main Metrics */}
           <div className="flex flex-col gap-4">
-            <TopologyGraph networkState={networkState} highlightedPath={highlightedPath} isDark={theme !== 'solarized-light'} />
-            <CongestionHeatmap networkState={networkState} isDark={theme !== 'solarized-light'} />
+            <div className="flex-1 min-h-[500px]">
+              <TopologyGraph networkState={networkState} highlightedPath={highlightedPath} isDark={theme !== 'solarized-light'} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <MetricsPanel networkState={networkState} comparison={comparison} />
+              <CongestionHeatmap networkState={networkState} isDark={theme !== 'solarized-light'} />
+            </div>
           </div>
 
-          {/* Right Column */}
+          {/* Right Column: Controls & Route Comparison */}
           <div className="flex flex-col gap-4">
             <RouteComparison
               networkState={networkState}
@@ -123,6 +140,36 @@ function App() {
             <RightPanel networkState={networkState} />
           </div>
         </div>
+
+        {/* Bottom Drawer for Experiment Results */}
+        {experimentResults && (
+          <div className="mt-4 pt-4 border-t border-app-border flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-app-text">Experiment Results</h2>
+              <button 
+                onClick={() => setExperimentResults(null)}
+                className="text-sm rounded border border-app-border bg-app-input-bg px-3 py-1 hover:bg-app-panel transition-colors text-app-text"
+              >
+                Dismiss
+              </button>
+            </div>
+            <div className="rounded border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">
+              ✅ Experiment complete — results below use the same analysis as the fixed benchmark report.
+            </div>
+            <BenchmarkResultView
+              scenarioData={experimentResults}
+              scenarioLabel="Custom Experiment"
+              showLimitations={false}
+            />
+          </div>
+        )}
+
+        {/* Bottom Drawer for Benchmark Report */}
+        {showBenchmark && (
+          <div className="mt-4 pt-4 border-t border-app-border">
+            <BenchmarkReport />
+          </div>
+        )}
       </section>
     </main>
   );

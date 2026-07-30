@@ -1,17 +1,16 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import { RotateCcw, Send, StepForward, Workflow } from "lucide-react";
 
 function ControlPanel({ networkState, isLoading, onSimulatorAction }) {
-  const links = networkState?.links ?? [];
-  const [selectedLink, setSelectedLink] = useState("");
+  const nodes = networkState?.nodes ?? [];
+  const [sourceNode, setSourceNode] = useState("R1");
+  const [targetNode, setTargetNode] = useState("R2");
   const [lastAction, setLastAction] = useState("");
 
-  const linkOptions = useMemo(
-    () => links.map((link) => `${link.source}|${link.target}`),
-    [links]
-  );
-  const activeLink = selectedLink || linkOptions[0] || "";
+  // Keep selected nodes valid
+  const activeSource = nodes.includes(sourceNode) ? sourceNode : nodes[0] || "";
+  const activeTarget = nodes.includes(targetNode) ? targetNode : nodes[1] || nodes[0] || "";
 
   async function stepMany(count) {
     let result = null;
@@ -25,8 +24,8 @@ function ControlPanel({ networkState, isLoading, onSimulatorAction }) {
   }
 
   async function sendLinkAction(path, label) {
-    const [source, target] = activeLink.split("|");
-    const result = await onSimulatorAction(path, { source, target });
+    if (!activeSource || !activeTarget) return;
+    const result = await onSimulatorAction(path, { source: activeSource, target: activeTarget });
     if (result) {
       setLastAction(label);
     }
@@ -64,23 +63,34 @@ function ControlPanel({ networkState, isLoading, onSimulatorAction }) {
         <RotateCcw className="h-4 w-4" aria-hidden="true" />
         Reset
       </button>
-      <select
-        className="h-9 min-w-36 rounded border border-app-border bg-app-input-bg px-2 text-sm text-app-text"
-        value={activeLink}
-        onChange={(event) => setSelectedLink(event.target.value)}
-      >
-        {linkOptions.map((link) => {
-          const [source, target] = link.split("|");
-          return (
-            <option key={link} value={link}>
-              {source}-{target}
+      <div className="flex items-center gap-1">
+        <select
+          className="h-9 min-w-[70px] rounded border border-app-border bg-app-input-bg px-2 text-sm text-app-text outline-none focus:border-app-accent"
+          value={activeSource}
+          onChange={(event) => setSourceNode(event.target.value)}
+        >
+          {nodes.map((node) => (
+            <option key={node} value={node}>
+              {node}
             </option>
-          );
-        })}
-      </select>
+          ))}
+        </select>
+        <span className="text-app-muted text-sm">—</span>
+        <select
+          className="h-9 min-w-[70px] rounded border border-app-border bg-app-input-bg px-2 text-sm text-app-text outline-none focus:border-app-accent"
+          value={activeTarget}
+          onChange={(event) => setTargetNode(event.target.value)}
+        >
+          {nodes.map((node) => (
+            <option key={node} value={node}>
+              {node}
+            </option>
+          ))}
+        </select>
+      </div>
       <button
         className="inline-flex h-9 items-center gap-2 rounded border border-app-border bg-transparent px-3 text-sm text-app-text hover:bg-app-input-bg disabled:opacity-50"
-        disabled={isLoading || !activeLink}
+        disabled={isLoading || !activeSource || !activeTarget || activeSource === activeTarget}
         onClick={() => sendLinkAction("/sim/inject-failure", "Injected link failure.")}
         type="button"
       >
@@ -89,7 +99,7 @@ function ControlPanel({ networkState, isLoading, onSimulatorAction }) {
       </button>
       <button
         className="inline-flex h-9 items-center gap-2 rounded border border-app-border bg-transparent px-3 text-sm text-app-text hover:bg-app-input-bg disabled:opacity-50"
-        disabled={isLoading || !activeLink}
+        disabled={isLoading || !activeSource || !activeTarget || activeSource === activeTarget}
         onClick={() => sendLinkAction("/sim/restore-link", "Restored selected link.")}
         type="button"
       >

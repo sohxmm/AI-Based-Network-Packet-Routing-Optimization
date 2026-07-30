@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 
 import { GitCompareArrows } from "lucide-react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import GuardrailBadge from "./GuardrailBadge.jsx";
 
 function RouteComparison({ networkState, comparison, isLoading, onCompare }) {
   const nodes = networkState?.nodes ?? [];
@@ -28,6 +29,7 @@ function RouteComparison({ networkState, comparison, isLoading, onCompare }) {
     gnn: "GNN",
     gnn_predictive: "GNN-P",
     rl_predictive: "RL-P",
+    multi_agent: "MARL",
   };
 
   const chartData = (comparison?.results ?? []).map((result) => {
@@ -145,24 +147,47 @@ function RouteComparison({ networkState, comparison, isLoading, onCompare }) {
             </tr>
           </thead>
           <tbody>
-            {(comparison?.results ?? []).map((result) => (
-              <tr
-                key={result.algorithm}
-                className={result.algorithm === bestAlgorithm ? "bg-app-accent/20" : "border-t border-app-border"}
-              >
-                <td className="px-3 py-2 text-app-text">{formatAlgorithmName(result.algorithm)}</td>
-                <td className="px-3 py-2 text-app-text">
-                  {result.total_latency == null ? "--" : `${result.total_latency.toFixed(1)} ms`}
-                </td>
-                <td 
-                  className={`px-3 py-2 cursor-pointer text-app-muted transition-all hover:text-app-text ${expandedAlgorithm === result.algorithm ? "break-words whitespace-normal" : "truncate"}`}
-                  onClick={() => togglePath(result.algorithm)}
-                  title={expandedAlgorithm === result.algorithm ? "Click to collapse" : "Click to expand"}
+            {(comparison?.results ?? []).map((result) => {
+              // Detect if this AI algorithm's path exactly matches Dijkstra's
+              const dijkstraResult = comparison?.results?.find(
+                (r) => r.algorithm === "dijkstra"
+              );
+              const isDijkstraMatch =
+                result.algorithm !== "dijkstra" &&
+                result.algorithm !== "bellman_ford" &&
+                result.success &&
+                dijkstraResult?.success &&
+                result.path?.length > 0 &&
+                dijkstraResult?.path?.length > 0 &&
+                JSON.stringify(result.path) === JSON.stringify(dijkstraResult.path);
+
+              return (
+                <tr
+                  key={result.algorithm}
+                  className={result.algorithm === bestAlgorithm ? "bg-app-accent/20" : "border-t border-app-border"}
                 >
-                  {result.path?.length ? result.path.join(" -> ") : "No path"}
-                </td>
-              </tr>
-            ))}
+                  <td className="px-3 py-2 text-app-text">
+                    <div className="flex flex-col gap-1">
+                      {formatAlgorithmName(result.algorithm)}
+                      <div className="flex flex-wrap gap-1">
+                        {result.is_fallback && <GuardrailBadge type="fallback" compact />}
+                        {isDijkstraMatch && <GuardrailBadge type="dijkstra-match" compact />}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 text-app-text">
+                    {result.total_latency == null ? "--" : `${result.total_latency.toFixed(1)} ms`}
+                  </td>
+                  <td 
+                    className={`px-3 py-2 cursor-pointer text-app-muted transition-all hover:text-app-text ${expandedAlgorithm === result.algorithm ? "break-words whitespace-normal" : "truncate"}`}
+                    onClick={() => togglePath(result.algorithm)}
+                    title={expandedAlgorithm === result.algorithm ? "Click to collapse" : "Click to expand"}
+                  >
+                    {result.path?.length ? result.path.join(" -> ") : "No path"}
+                  </td>
+                </tr>
+              );
+            })}
             {!comparison?.results?.length && (
               <tr>
                 <td className="px-3 py-5 text-app-muted" colSpan={3}>

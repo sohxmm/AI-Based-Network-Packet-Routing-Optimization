@@ -30,3 +30,4 @@ class RoutingDecision:
     total_latency: float
     avg_utilization: float
     success: bool
+    is_fallback: bool = False
