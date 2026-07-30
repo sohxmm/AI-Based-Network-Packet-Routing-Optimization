@@ -1,6 +1,6 @@
 # Internship Work Log
 
-Total hours: 101.0
+Total hours: 125.5
 
 ## 09/06/2026
 
@@ -324,4 +324,57 @@ Tasks:
 
 Status:
 - Predictive routing feature complete with frontend toggle, backend pipeline, and integration test coverage
+
+## 27/07/2026
+
+Hours: 5.5
+
+Tasks:
+- Debugged and verified Phase 1 requirements: singleton routers, predictive routing modes, and ACO pheromone persistence.
+- Designed and implemented the Multi-Agent RL router (`multi_agent_router.py`) using a decentralized architecture.
+- Integrated NetworkX community detection for automatic topology partitioning into distinct routing regions.
+
+Status:
+- Multi-Agent RL routing operational and integrated into the backend API.
+
+## 28/07/2026
+
+Hours: 6.0
+
+Tasks:
+- Built a decentralized multi-agent Gymnasium environment (`multi_agent_rl_environment.py`) with a shared global utilization variance penalty to encourage load balancing.
+- Trained and verified distinct regional PPO models, ensuring they outperform single-agent baselines in complex topologies.
+- Fixed a degenerate policy bug in the Multi-Agent RL models by rebalancing the reward function (latency vs. global variance) and successfully retrained.
+
+Status:
+- Multi-Agent models successfully trained, outperforming single-agent baselines on regional routing tasks without falling into degenerate policies.
+
+## 29/07/2026
+
+Hours: 6.5
+
+Tasks:
+- Built a comprehensive automated benchmarking suite (`run_benchmark.py` and `report.py`) comparing all 8 algorithms across 5 complex network scenarios.
+- Implemented Phase 3 guardrails: Fallback tracking (>5%), Degeneracy checking (AI mimicking Dijkstra), Variance sanity checking, and Wilcoxon statistical significance testing.
+- Instrumented `is_fallback` tracking across all AI routers (`GNNRouter`, `RLRouter`, `MultiAgentRouter`) for transparent reporting.
+- Wrote three automated regression tests to validate benchmark integrity and AI policy divergence.
+- Added backend API endpoints (`GET /benchmark/results`) to securely expose benchmark data, computing effect sizes compared to Dijkstra.
+
+Status:
+- Comprehensive benchmarking suite delivered; AI routing models are statistically verified against baseline heuristics and data is exposed via API.
+
+## 30/07/2026
+
+Hours: 6.5
+
+Tasks:
+- Redesigned the frontend dashboard to consolidate the Live Simulator, Experiment Sandbox, and Benchmark Report into a single, unified view in `App.jsx`.
+- Refactored `ExperimentSandbox.jsx` into a step-by-step wizard sidebar (`ExperimentBuilder.jsx`) for streamlined simulation configuration.
+- Enhanced `TopologyGraph.jsx` by adding pulsating CSS animations for congested links and dynamic packet flow visualizations using D3 stroke offsets.
+- Added a Benchmark Summary Card to the Report view, highlighting the best latency and load balancing models while automatically displaying AI guardrail warnings.
+- Polished overall UI/UX typography, spacing, and theming, fixing minor issues with the GitHub Dark theme and link failure visual states.
+- Authored a comprehensive project handover guide (`project_guide.md`) and a complete startup guide (`startup_guide.md`) for final faculty review.
+
+Status:
+- Phase 3 Complete. UI/UX fully consolidated into a single workflow with real-time animations. Final project documentation created for faculty demo and handover.
 

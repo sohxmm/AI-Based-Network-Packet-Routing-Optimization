@@ -149,3 +149,22 @@ select, option {
   background-color: var(--color-input-bg) !important;
   color: var(--color-text-main) !important;
 }
+
+@keyframes packet-dash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+.animate-packet-flow {
+  animation: packet-dash linear infinite;
+}
+
+@keyframes pulse-congestion {
+  0%, 100% { filter: drop-shadow(0 0 2px rgba(239, 68, 68, 0.2)); }
+  50% { filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.8)); }
+}
+
+.animate-congestion {
+  animation: pulse-congestion 1.5s ease-in-out infinite;
+}

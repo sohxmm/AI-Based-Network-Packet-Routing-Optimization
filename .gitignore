@@ -47,3 +47,4 @@ backend/ml/logs/
 # Data artifacts
 datasets/raw/
 datasets/processed/
+*.db

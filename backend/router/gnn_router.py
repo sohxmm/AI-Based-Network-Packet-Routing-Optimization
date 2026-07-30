@@ -150,11 +150,13 @@ class GNNRouter:
         if not candidate_paths:
             return self._failed_decision(src, dst)
 
+        is_fallback = False
         if self._model is not None:
             path = self._gnn_select_path(state, src, dst, candidate_paths)
         else:
             # Heuristic fallback: pick path with lowest congestion-adjusted cost
             path = min(candidate_paths, key=lambda p: _load_balanced_cost(state, p))
+            is_fallback = True
 
         return RoutingDecision(
             source=src,
@@ -164,6 +166,7 @@ class GNNRouter:
             total_latency=_path_cost(state, path),
             avg_utilization=_average_path_utilization(state, path),
             success=True,
+            is_fallback=is_fallback,
         )
 
     def _gnn_select_path(
@@ -265,22 +268,21 @@ def _find_candidate_paths(
     state: NetworkState, src: str, dst: str, limit: int = 10
 ) -> list[list[str]]:
     """Find simple valid paths with breadth-first search."""
-    adjacency = _build_adjacency(state)
-    queue: list[list[str]] = [[src]]
-    paths: list[list[str]] = []
+    import networkx as nx
+    G = nx.Graph()
+    for link in state.links:
+        G.add_edge(link.source, link.target)
+    
+    if src not in G or dst not in G or not nx.has_path(G, src, dst):
+        return []
 
-    while queue and len(paths) < limit:
-        path = queue.pop(0)
-        current = path[-1]
-
-        if current == dst:
+    paths = []
+    try:
+        path_generator = nx.shortest_simple_paths(G, src, dst)
+        for _, path in zip(range(limit), path_generator):
             paths.append(path)
-            continue
-
-        for neighbor in adjacency.get(current, []):
-            if neighbor not in path:
-                queue.append([*path, neighbor])
-
+    except nx.NetworkXNoPath:
+        pass
     return paths
 
 

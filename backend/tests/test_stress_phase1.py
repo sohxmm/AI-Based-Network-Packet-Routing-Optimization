@@ -5,7 +5,7 @@ from pathlib import Path
 import time
 
 if __name__ == "__main__":
-    sys.path.insert(0, str(Path(__file__).resolve().parents[0]))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from simulator.network_sim import NetworkSimulator
 from router.dijkstra import find_route as dijkstra_route

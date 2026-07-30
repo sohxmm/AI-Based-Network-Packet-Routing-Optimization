@@ -22,7 +22,8 @@ function TopologyGraph({ networkState, highlightedPath = [], isDark = true }) {
 
   // Stable refs to D3 selections so Phase 2 can reach them without
   // triggering Phase 1.
-  const linkSelRef = useRef(null);
+  const linkBaseRef = useRef(null);
+  const linkAnimRef = useRef(null);
   const nodeCircleRef = useRef(null);
 
   // Stable ref to the frozen topology (node ids + static link list).
@@ -72,19 +73,29 @@ function TopologyGraph({ networkState, highlightedPath = [], isDark = true }) {
       // Cool quickly — we don't want it bouncing during the demo
       .alphaDecay(0.05);
 
-    // ── Draw links ──────────────────────────────────────────────────────
-    const linkG = svg.append("g").attr("class", "links");
-    const linkSel = linkG
+    // ── Draw links (Base) ───────────────────────────────────────────────
+    const linkBaseG = svg.append("g").attr("class", "links-base");
+    const linkBaseSel = linkBaseG
       .selectAll("line")
       .data(simLinks, (d) => d.edgeKey)
       .join("line")
       .attr("stroke-width", 2)
-      .attr("stroke", "#334155")      // neutral default until Phase 2 fires
-      .attr("stroke-opacity", 0.86)
-      // Smooth color transitions — only color, not position
+      .attr("stroke", "#334155")
+      .attr("stroke-opacity", 0.6)
       .style("transition", "stroke 0.6s ease, stroke-width 0.4s ease");
 
-    linkSel.append("title").text((d) => d.edgeKey);
+    linkBaseSel.append("title").text((d) => d.edgeKey);
+
+    // ── Draw links (Animated Packets) ───────────────────────────────────
+    const linkAnimG = svg.append("g").attr("class", "links-anim");
+    const linkAnimSel = linkAnimG
+      .selectAll("line")
+      .data(simLinks, (d) => d.edgeKey)
+      .join("line")
+      .attr("stroke-dasharray", "4, 8")
+      .attr("class", "animate-packet-flow")
+      .style("pointer-events", "none")
+      .style("opacity", 0);
 
     // ── Draw nodes ──────────────────────────────────────────────────────
     const nodeG = svg.append("g").attr("class", "nodes");
@@ -131,7 +142,13 @@ function TopologyGraph({ networkState, highlightedPath = [], isDark = true }) {
 
     // ── Tick handler: only update geometry (x/y), not colors ───────────
     simulation.on("tick", () => {
-      linkSel
+      linkBaseSel
+        .attr("x1", (d) => d.source.x)
+        .attr("y1", (d) => d.source.y)
+        .attr("x2", (d) => d.target.x)
+        .attr("y2", (d) => d.target.y);
+
+      linkAnimSel
         .attr("x1", (d) => d.source.x)
         .attr("y1", (d) => d.source.y)
         .attr("x2", (d) => d.target.x)
@@ -141,7 +158,8 @@ function TopologyGraph({ networkState, highlightedPath = [], isDark = true }) {
     });
 
     // Store selections in refs so Phase 2 can reach them
-    linkSelRef.current = linkSel;
+    linkBaseRef.current = linkBaseSel;
+    linkAnimRef.current = linkAnimSel;
     nodeCircleRef.current = circlesSel;
 
     return () => simulation.stop();
@@ -151,7 +169,7 @@ function TopologyGraph({ networkState, highlightedPath = [], isDark = true }) {
 
   // ─── Phase 2: update colors only (every WebSocket tick) ──────────────
   useEffect(() => {
-    if (!networkState?.links || !linkSelRef.current || !nodeCircleRef.current) return;
+    if (!networkState?.links || !linkBaseRef.current || !nodeCircleRef.current || !linkAnimRef.current) return;
 
     // Build a fast lookup: "R1-R2" → utilization
     const utilMap = new Map(
@@ -168,33 +186,70 @@ function TopologyGraph({ networkState, highlightedPath = [], isDark = true }) {
         .map((node, i) => [node, highlightedPath[i + 1]].sort().join("-"))
     );
 
-    // Update link stroke + width (CSS transition handles the animation)
-    linkSelRef.current
+    // Update base link stroke + width
+    linkBaseRef.current
       .attr("stroke", (d) => {
-        if (highlightedEdges.has(d.edgeKey)) return isDark ? "#67e8f9" : "#06b6d4";
-        const util = utilMap.get(d.edgeKey) ?? 0;
+        if (!utilMap.has(d.edgeKey)) return isDark ? "rgba(239, 68, 68, 0.4)" : "rgba(239, 68, 68, 0.6)";
+        if (highlightedEdges.has(d.edgeKey)) return isDark ? "rgba(103, 232, 249, 0.4)" : "rgba(6, 182, 212, 0.4)";
+        const util = utilMap.get(d.edgeKey);
         return utilizationColor(util);
       })
       .attr("stroke-width", (d) => {
+        if (!utilMap.has(d.edgeKey)) return 2;
         if (highlightedEdges.has(d.edgeKey)) return 5;
+        const util = utilMap.get(d.edgeKey);
+        return 1.5 + util * 3;
+      })
+      .attr("stroke-dasharray", (d) => {
+        if (!utilMap.has(d.edgeKey)) return "4, 4";
+        return "none";
+      });
+
+    // Update animated packet layer
+    linkAnimRef.current
+      .attr("stroke", (d) => {
+        if (!utilMap.has(d.edgeKey)) return "none";
+        if (highlightedEdges.has(d.edgeKey)) return isDark ? "#67e8f9" : "#06b6d4";
         const util = utilMap.get(d.edgeKey) ?? 0;
-        return 1.5 + util * 4;
+        return util > 0.8 ? "#ef4444" : isDark ? "#e2e8f0" : "#475569";
+      })
+      .attr("stroke-width", (d) => {
+        if (highlightedEdges.has(d.edgeKey)) return 3;
+        const util = utilMap.get(d.edgeKey) ?? 0;
+        return 1.5 + util * 2;
+      })
+      .style("opacity", (d) => {
+        if (!utilMap.has(d.edgeKey)) return 0;
+        if (highlightedEdges.has(d.edgeKey)) return 1;
+        const util = utilMap.get(d.edgeKey) ?? 0;
+        return util > 0 ? Math.min(1, util + 0.3) : 0;
+      })
+      .style("animation-duration", (d) => {
+        const util = utilMap.get(d.edgeKey) ?? 0;
+        return `${Math.max(0.5, 2 - util * 1.5)}s`;
       });
 
     // Update link tooltip text
-    linkSelRef.current.select("title").text((d) => {
-      const util = utilMap.get(d.edgeKey) ?? 0;
+    linkBaseRef.current.select("title").text((d) => {
+      if (!utilMap.has(d.edgeKey)) return `${d.edgeKey}: FAILED`;
+      const util = utilMap.get(d.edgeKey);
       return `${d.edgeKey}: ${Math.round(util * 100)}% utilized`;
     });
 
-    // Update node fill (congested = any adjacent link > 0.8)
-    nodeCircleRef.current.attr("fill", (d) => {
-      const isCongested = networkState.links.some(
-        (l) =>
-          l.utilization > 0.8 && (l.source === d.id || l.target === d.id)
-      );
-      return isCongested ? "#ef4444" : "var(--color-accent)";
-    });
+    // Update node fill and congestion pulsing
+    nodeCircleRef.current
+      .attr("fill", (d) => {
+        const isCongested = networkState.links.some(
+          (l) => l.utilization > 0.8 && (l.source === d.id || l.target === d.id)
+        );
+        return isCongested ? "#ef4444" : "var(--color-accent)";
+      })
+      .attr("class", (d) => {
+        const isCongested = networkState.links.some(
+          (l) => l.utilization > 0.8 && (l.source === d.id || l.target === d.id)
+        );
+        return isCongested ? "animate-congestion" : "";
+      });
   }, [networkState, highlightedPath, isDark]);
 
   // ─── Phase 3: Update theme colors ──────────────
@@ -207,18 +262,18 @@ function TopologyGraph({ networkState, highlightedPath = [], isDark = true }) {
   }, [isDark, networkState?.nodes]);
 
   return (
-    <section className="min-h-[420px] rounded border border-app-border bg-app-panel p-4">
-      <div className="flex items-center justify-between gap-3">
+    <section className="h-full rounded border border-app-border bg-app-panel p-4 flex flex-col">
+      <div className="flex items-center justify-between gap-3 shrink-0">
         <h2 className="text-sm font-semibold text-app-text">Topology Graph</h2>
-        <span className="text-xs text-app-muted">Drag nodes to reposition • colors update live</span>
+        <span className="text-xs text-app-muted">Drag nodes to reposition • animations live</span>
       </div>
       {networkState?.nodes?.length ? (
         <svg
           ref={svgRef}
-          className="mt-4 h-[360px] w-full rounded border border-app-border bg-app-input-bg"
+          className="mt-4 flex-1 w-full rounded border border-app-border bg-app-input-bg min-h-[460px]"
         />
       ) : (
-        <div className="mt-4 flex h-[360px] items-center justify-center rounded border border-dashed border-app-border text-sm text-app-muted">
+        <div className="mt-4 flex flex-1 items-center justify-center rounded border border-dashed border-app-border text-sm text-app-muted min-h-[460px]">
           Waiting for network state
         </div>
       )}

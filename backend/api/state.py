@@ -4,6 +4,7 @@ from simulator.network_sim import NetworkSimulator
 from router.aco import AntColonyRouter
 from router.gnn_router import GNNRouter
 from router.rl_agent import RLRouter
+from router.multi_agent_router import MultiAgentRouter
 
 
 class AppState:
@@ -18,6 +19,8 @@ class AppState:
         self.rl_router.try_load_model()
         self.gnn_router = GNNRouter()
         self.gnn_router.try_load_model()
+        self.multi_agent_router = MultiAgentRouter()
+        self.multi_agent_router.try_load_models()
 
 
 
@@ -42,3 +45,8 @@ def get_rl_router() -> RLRouter:
 def get_gnn_router() -> GNNRouter:
     """Return the singleton GNN router instance (model loaded once at startup)."""
     return app_state.gnn_router
+
+
+def get_multi_agent_router() -> MultiAgentRouter:
+    """Return the singleton multi-agent router instance."""
+    return app_state.multi_agent_router

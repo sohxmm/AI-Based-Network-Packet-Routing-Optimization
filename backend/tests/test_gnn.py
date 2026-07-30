@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 # Ensure backend root is on sys.path
-_BACKEND_ROOT = Path(__file__).resolve().parent
+_BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(_BACKEND_ROOT))
 
@@ -185,7 +185,7 @@ def test_gnn_router_invalid_nodes():
 
 def test_gnn_router_with_trained_model():
     """If a trained model exists, verify GNN inference produces valid decisions."""
-    model_path = Path(__file__).parent / "ml" / "models" / "gnn_router.pt"
+    model_path = Path(__file__).parents[1] / "ml" / "models" / "gnn_router.pt"
     if not model_path.exists():
         print("  [SKIP] No trained model found; skipping trained inference test")
         return

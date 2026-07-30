@@ -7,7 +7,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import router as api_router, handle_simulator_step
+from api.routers.network import router as network_router
+from api.routers.simulator import router as simulator_router, handle_simulator_step
+from api.routers.metrics import router as metrics_router
+
+from api.benchmark_api import router as benchmark_router
+from api.experiment_api import router as experiment_router
 from api.state import get_simulator
 from api.websocket import router as websocket_router
 from db.database import init_db
@@ -59,8 +64,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.include_router(api_router)
+app.include_router(network_router)
+app.include_router(simulator_router)
+app.include_router(metrics_router)
+app.include_router(benchmark_router)
+app.include_router(experiment_router)
 app.include_router(websocket_router)
+
 
 
 @app.get("/health")
