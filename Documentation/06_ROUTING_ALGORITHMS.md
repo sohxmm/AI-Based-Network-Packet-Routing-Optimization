@@ -1,6 +1,6 @@
 # Routing Algorithms
 
-The system implements four routing algorithms, each operating on the same `NetworkState` and producing a `RoutingDecision`. All algorithms share a common **congestion-aware edge weight formula**:
+The system implements multiple routing algorithms (including advanced ML-based and predictive approaches), each operating on the same `NetworkState` and producing a `RoutingDecision`. All algorithms share a common **congestion-aware edge weight formula**:
 
 ```
 weight = base_latency × (1 + 4 × utilization²)
@@ -18,8 +18,11 @@ This makes highly-utilized links quadratically more expensive, encouraging all a
 | Bellman-Ford   | O(VE)              | Dynamic Programming| Handles negative weights, detects cycles | `router/bellman_ford.py` |
 | ACO            | O(iterations × ants × V) | Metaheuristic | Multi-path exploration, adaptive | `router/aco.py`              |
 | RL (PPO)       | O(inference)       | Learned Policy    | Adapts to traffic patterns over time  | `router/rl_agent.py`         |
+| GNN            | O(inference)       | Learned Policy    | Understands topology, balances load   | `router/gnn_router.py`       |
+| MARL           | O(inference)       | Multi-Agent       | Distributed routing across regions    | `router/multi_agent_router.py`|
+| Predictive     | O(LSTM + inference)| Forecasting       | Avoids congestion before it happens   | `api/routers/network.py`     |
 
-RL might provide better results for larger networks with more routers.
+RL and GNN might provide better results for larger networks with more routers.
 ---
 
 ## 2. Dijkstra's Algorithm
@@ -178,7 +181,37 @@ decision = router.predict(state, "R1", "R5")
 
 ---
 
-## 6. Algorithm Comparison
+## 6. Graph Neural Network (GNN)
+
+**File**: `backend/router/gnn_router.py`
+
+### How It Works
+The GNN router uses a PyTorch-based Graph Neural Network that inherently understands the network topology. It processes the current network state to predict path qualities, focusing on minimizing congestion and maximizing load balancing.
+
+---
+
+## 7. Multi-Agent Reinforcement Learning (MARL)
+
+**File**: `backend/router/multi_agent_router.py`
+
+### How It Works
+Instead of a single global agent, the network is partitioned into distinct regions, each governed by its own PPO agent. This decentralized approach (using naive self-play for training) models distributed routing, where regions cooperate implicitly via a shared global reward signal.
+
+---
+
+## 8. Predictive Routing Mode
+
+**File**: Implemented via API (`backend/api/routers/network.py`) and Benchmark (`backend/benchmark/run_benchmark.py`)
+
+### How It Works
+Predictive routing is not a standalone pathfinding algorithm; rather, it is a mode that enhances the RL or GNN routers.
+1. The **LSTM Congestion Predictor** takes historical utilization data and forecasts the *future* network state.
+2. This predicted state is fed to the RL (`rl_predictive`) or GNN (`gnn_predictive`) router.
+3. The router makes a decision based on the anticipated congestion, avoiding links before they actually become congested.
+
+---
+
+## 9. Algorithm Comparison
 
 All four algorithms are compared via `POST /network/route/compare`:
 
@@ -191,6 +224,9 @@ Dijkstra       R1→R3→R5          34.7 ms    0.35
 Bellman-Ford   R1→R3→R5          34.7 ms    0.35
 ACO            R1→R4→R7→R5       52.1 ms    0.28
 RL (PPO)       R1→R3→R5          34.7 ms    0.35
+GNN            R1→R2→R4→R5       42.0 ms    0.22
+MARL           R1→R3→R5          34.7 ms    0.35
+Predictive     R1→R4→R7→R5       50.1 ms    0.20
 ```
 
 ### Observations
@@ -201,7 +237,7 @@ RL (PPO)       R1→R3→R5          34.7 ms    0.35
 
 ---
 
-## 7. Common Data Models
+## 10. Common Data Models
 
 All algorithms return a `RoutingDecision` dataclass:
 

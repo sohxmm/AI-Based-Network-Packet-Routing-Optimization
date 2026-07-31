@@ -109,6 +109,21 @@ Hardcoded defaults in `simulator/network_sim.py`:
 | `checkpoint_freq`  | 50,000      | CheckpointCallback         |
 | `eval_freq`        | 25,000      | EvalCallback               |
 
+### GNN Agent (`ml/train_gnn.py`)
+
+| Parameter          | Default     | Location                   |
+|--------------------|-------------|----------------------------|
+| `num_samples`      | 1500        | `generate_dataset()`       |
+| Loss components    | Latency(0.5), Max Util(0.3), Imbalance(0.2)| `get_path_cost()`     |
+
+### MARL Agent (`ml/train_multi_agent.py`)
+
+| Parameter          | Default     | Location                   |
+|--------------------|-------------|----------------------------|
+| `N_ROUNDS`         | 3           | Module constant            |
+| `K_STEPS`          | 15,000      | Module constant            |
+| `NUM_NODES`        | 25          | Module constant            |
+
 ### RL Environment (`ml/rl_environment.py`)
 
 | Parameter              | Default | Location                   |

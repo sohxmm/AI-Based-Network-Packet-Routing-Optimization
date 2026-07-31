@@ -7,7 +7,7 @@
 ### 1.1 Database Connection Failures Are Silently Logged
 
 **Impact**: Low  
-**Location**: `backend/api/routes.py` — `save_routing_event()`, `handle_simulator_step()`
+**Location**: `backend/api/routers/simulator.py` and `backend/api/routers/metrics.py`
 
 If the PostgreSQL database is unavailable, routing events and network snapshots fail to save. The error is printed to console (`[DB] Error saving...`) but the API continues operating normally. This means the dashboard works without a database, but no historical data is recorded.
 
@@ -29,7 +29,7 @@ The `NetworkSimulator` is a module-level singleton shared across all requests. R
 ### 1.3 Network Snapshot Table Grows Unbounded
 
 **Impact**: Medium (over time)  
-**Location**: `backend/api/routes.py` — `handle_simulator_step()`
+**Location**: `backend/api/routers/simulator.py` — `handle_simulator_step()`
 
 A new `NetworkSnapshot` row is inserted every second (one per simulator tick). After 24 hours of continuous operation, this creates ~86,400 rows. There is no cleanup or retention policy.
 
@@ -46,14 +46,7 @@ A new `NetworkSnapshot` row is inserted every second (one per simulator tick). A
 
 ---
 
-### 1.5 RL Router Creates New Instance Per Request
 
-**Impact**: Low (performance)  
-**Location**: `backend/api/routes.py` — `_run_algorithm()`
-
-Both `AntColonyRouter()` and `RLRouter()` are instantiated fresh on every API call. The RL router re-loads the PPO model each time. Consider caching these as singletons.
-
----
 
 ## 2. Frontend Issues
 
@@ -68,14 +61,7 @@ The REST API base URL is hardcoded to `http://localhost:8000`. The WebSocket URL
 
 ---
 
-### 2.2 RightPanel References Undefined `capacity` Field
 
-**Impact**: Low (displays NaN/0)  
-**Location**: `frontend/src/components/RightPanel.jsx`
-
-The component accesses `link.capacity` which is not a field on the `LinkState` data model. It shows 0 or NaN for "Avg Link Capacity". Should reference `link.bandwidth` instead.
-
----
 
 ### 2.3 PacketAnimator Is a Placeholder
 
@@ -123,7 +109,7 @@ The PPO agent's mean reward improved from -77 to -61 (+21%) over 500k steps, wit
 ### 3.3 Autoregressive Forecast Drift
 
 **Impact**: Low  
-**Location**: `backend/api/routes.py` — `get_congestion_forecast()`
+**Location**: `backend/api/routers/network.py` — `get_congestion_forecast()`
 
 Multi-step forecasts feed each prediction back as input for the next step. Over several steps, prediction errors compound, causing drift from reality. Forecasts beyond 3–5 steps should be treated with skepticism.
 
@@ -141,11 +127,11 @@ Tables are created via `CREATE TABLE IF NOT EXISTS` on startup. There is no vers
 
 ---
 
-### 4.2 No CI/CD Pipeline
+### 4.2 Limited CI/CD Pipeline
 
-**Impact**: Medium  
+**Impact**: Low  
 
-There are no automated tests, linting, or deployment pipelines. All testing is manual.
+We now have over 50 automated tests (`pytest`) covering the algorithms, integration, and API. However, there are no deployment pipelines (e.g. GitHub Actions) to run them automatically on commit. All testing must be run locally.
 
 ---
 

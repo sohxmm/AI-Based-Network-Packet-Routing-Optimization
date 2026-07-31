@@ -83,7 +83,7 @@ Frontend: User selects source/destination → POST /network/route/compare
 Backend: compare_routes()
        │
        ├── Gets current NetworkState from simulator
-       ├── Runs all 4 algorithms (Dijkstra, Bellman-Ford, ACO, RL)
+       ├── Runs all algorithms (Dijkstra, Bellman-Ford, ACO, RL, GNN, MARL, Predictive)
        ├── Saves each RoutingEvent to database
        ├── Broadcasts routing_event over WebSocket
        └── Returns comparison results as JSON
@@ -129,6 +129,8 @@ Returns per-link predicted utilization for N steps ahead
 | `router/bellman_ford.py`  | Bellman-Ford with negative cycle detection                |
 | `router/aco.py`           | Ant Colony Optimization with pheromone management         |
 | `router/rl_agent.py`      | PPO-based RL router with heuristic fallback               |
+| `router/gnn_router.py`    | GNN router minimizing congestion and balancing load       |
+| `router/multi_agent_router.py`| MARL router for decentralized region-based routing        |
 | `ml/congestion_lstm.py`   | LSTM model for utilization forecasting                    |
 | `ml/rl_environment.py`    | Gymnasium environment for PPO training                    |
 | `ml/train_rl.py`          | PPO training pipeline with callbacks                      |

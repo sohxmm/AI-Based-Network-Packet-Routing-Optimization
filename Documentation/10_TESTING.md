@@ -6,11 +6,16 @@
 
 | Test File                         | Type           | Scope                                   |
 |-----------------------------------|----------------|------------------------------------------|
-| `backend/test_integration.py`     | Integration    | End-to-end routing across all 4 algorithms |
+| `backend/test_integration.py`     | Integration    | End-to-end routing across algorithms     |
+| `backend/test_gnn.py`             | Integration    | Validates GNN functionality and tests    |
 | `backend/test_stress_phase1.py`   | Stress         | Simulator stability under load           |
 | `backend/router/test_all_routers.py` | Unit        | All routing algorithms                   |
 | `backend/router/test_stress_aco.py`  | Stress      | ACO under heavy congestion               |
 | `backend/router/test_stress_dijkstra.py` | Stress  | Dijkstra under heavy congestion          |
+| `backend/tests/test_predictive_routing.py`| Integration| Verifies predictive routing pipeline end-to-end |
+| `backend/tests/test_multi_agent_routing.py`| Unit  | Compares single-agent vs MARL success rates |
+| `backend/tests/test_benchmark_*.py` | Benchmark  | Algorithm differentiation and fallback logic |
+| `frontend/src/components/__tests__/`| Unit (Vitest/Jest) | Frontend UI component tests (e.g., BenchmarkReport) |
 
 ---
 
@@ -55,6 +60,22 @@ python test_stress_phase1.py
 python -m router.test_all_routers
 python -m router.test_stress_aco
 python -m router.test_stress_dijkstra
+```
+
+### Advanced Routing & Pytest Suites
+
+```bash
+cd backend
+python -m pytest tests/test_predictive_routing.py -v
+python -m pytest tests/test_multi_agent_routing.py -v
+python -m pytest tests/test_benchmark_algorithm_differentiation.py -v
+python test_gnn.py
+```
+
+### Frontend Testing
+```bash
+cd frontend
+npm test
 ```
 
 ---
@@ -147,7 +168,6 @@ def test_new_feature():
 
 ## 6. Known Test Limitations
 
-- **No pytest integration**: Tests use plain `assert` statements and `if __name__ == "__main__"` entry points (not pytest-compatible out of the box)
 - **No CI/CD pipeline**: Tests must be run manually
-- **No frontend unit tests**: React components are tested manually via the browser
 - **Database-dependent tests**: Some API endpoints require a running PostgreSQL instance; tests that don't need DB skip it gracefully
+- **Migration to Pytest**: Some older tests still use plain `assert` statements and `if __name__ == "__main__"`, though all new test suites in `backend/tests/` fully utilize `pytest`.

@@ -37,9 +37,8 @@ This document outlines recommended improvements and feature additions for the Ph
 ### 2.1 Improved RL Agent
 
 - **Larger observation space**: Include source/destination as part of the observation
-- **Graph Neural Network (GNN) policy**: Replace MlpPolicy with a GNN that understands network topology
 - **Curriculum learning**: Start with simple topologies and gradually increase complexity
-- **Multi-agent RL**: Train separate agents for different parts of the network
+- **Transformer-based models**: Investigate attention mechanisms for capturing long-range dependencies in large topologies
 - **Reward shaping**: Experiment with reward functions that better capture routing quality
 
 ### 2.2 Packet-Level Simulation

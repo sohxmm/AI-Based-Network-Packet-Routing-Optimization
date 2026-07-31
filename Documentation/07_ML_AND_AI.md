@@ -1,6 +1,6 @@
 # ML & AI Components
 
-The project uses two machine learning models: an **LSTM congestion predictor** for time-series forecasting and a **PPO reinforcement learning agent** for adaptive routing.
+The project uses four machine learning approaches: an **LSTM congestion predictor** for time-series forecasting, a **PPO reinforcement learning agent**, a **Graph Neural Network (GNN)**, and a **Multi-Agent RL (MARL)** system for adaptive routing.
 
 ---
 
@@ -89,7 +89,8 @@ The predictor is used by `GET /network/congestion-forecast`:
 1. On each call, the current link utilization snapshot is appended to a rolling history
 2. If the model is loaded and enough history exists (≥ `seq_len`), the LSTM predicts the next state
 3. For multi-step forecasts, each prediction is fed back as input for the next step (autoregressive)
-4. **Fallback**: If the model is not loaded or insufficient history, the last known snapshot is returned
+4. **Predictive Routing Integration**: The forecasted states can be routed to `gnn_predictive` or `rl_predictive` agents. This allows the agents to evaluate path qualities based on anticipated future congestion rather than just current metrics.
+5. **Fallback**: If the model is not loaded or insufficient history, the last known snapshot is returned
 
 ---
 
@@ -244,7 +245,37 @@ predict(state, src, dst)
 
 ---
 
-## 3. External APIs
+## 3. Graph Neural Network (GNN) Router
+
+**File**: ackend/ml/gnn_model.py and ackend/ml/train_gnn.py
+
+### Architecture
+The GNN model uses PyTorch to process the network topology dynamically. It takes the current network state and aims to minimize a custom congestion-adjusted loss function, optimizing for load balancing.
+
+### Training Pipeline
+`ash
+python -m ml.train_gnn
+`
+The model is saved to ackend/ml/models/gnn_router.pt.
+
+---
+
+## 4. Multi-Agent Reinforcement Learning (MARL)
+
+**File**: ackend/ml/train_multi_agent.py and ackend/ml/multi_agent_rl_environment.py
+
+### How It Works
+The MARL approach partitions the network into distinct regions and trains one PPO agent per region. To avoid full simultaneous MARL instability, it employs a naive self-play rotation: training one region's policy while others are frozen, then rotating.
+
+### Training Pipeline
+`ash
+python -m ml.train_multi_agent
+`
+Models are saved as ackend/ml/models/multi_agent_region_{i}.zip.
+
+---
+
+## 5. External APIs
 
 > **Important**: This project does **not** use any external AI APIs (Gemini, Ollama, OpenAI, etc.). All ML models are trained and run locally:
 
@@ -255,7 +286,7 @@ predict(state, src, dst)
 
 ---
 
-## 4. Model Files
+## 6. Model Files
 
 | File                              | Size    | Description                          |
 |-----------------------------------|---------|--------------------------------------|
@@ -268,7 +299,7 @@ predict(state, src, dst)
 
 ---
 
-## 5. Key Design Decisions
+## 7. Key Design Decisions
 
 ### Why LSTM for Congestion Prediction?
 

@@ -13,6 +13,9 @@ All API endpoints are served by the FastAPI backend on `http://localhost:8000`.
 - [Metrics & Analytics](#5-metrics--analytics)
 - [Congestion Forecast](#6-congestion-forecast)
 - [WebSocket Stream](#7-websocket-stream)
+- [Benchmark Reporting](#8-benchmark-reporting)
+- [Error Handling](#9-error-handling)
+- [External APIs Used](#10-external-apis-used)
 
 ---
 
@@ -100,7 +103,7 @@ Calculate a route using a single algorithm.
 |-------------|----------|----------|--------------|-----------------------------------------|
 | source      | string   | ✅       | —            | Source router ID (e.g., "R1")           |
 | destination | string   | ✅       | —            | Destination router ID (e.g., "R5")      |
-| algorithm   | string   | ❌       | `"dijkstra"` | One of: `dijkstra`, `bellman_ford`, `aco`, `rl` |
+| algorithm   | string   | ❌       | `"dijkstra"` | One of: `dijkstra`, `bellman_ford`, `aco`, `rl`, `gnn`, `gnn_predictive`, `rl_predictive`, `multi_agent` |
 
 **Response (success):**
 ```json
@@ -141,7 +144,7 @@ Compare routing decisions across multiple algorithms simultaneously.
 |-------------|---------------|----------|-----------------------------|-----------------------------------------|
 | source      | string        | ✅       | —                           | Source router ID                        |
 | destination | string        | ✅       | —                           | Destination router ID                   |
-| algorithms  | string[]      | ❌       | All 4 algorithms            | Subset of algorithms to compare         |
+| algorithms  | string[]      | ❌       | All algorithms              | Subset of algorithms to compare         |
 
 **Response:**
 ```json
@@ -375,7 +378,52 @@ Persistent WebSocket connection for real-time network state updates.
 
 ---
 
-## 8. Error Handling
+## 8. Benchmark Reporting
+
+### `GET /benchmark/results`
+
+Returns benchmark metrics for all known scenarios, sourcing data from JSON result files in `backend/benchmark/results/`. Includes per-algorithm metrics with `effect_size_pct` (% difference vs Dijkstra).
+
+**Response:**
+```json
+{
+  "scenarios": {
+    "normal_traffic": {
+      "scenario": "normal_traffic",
+      "n_steps": 100,
+      "m_pairs": 50,
+      "algorithms": {
+        "dijkstra": {
+          "mean_latency": 35.1,
+          "success_rate": 1.0,
+          "effect_size_pct": 0.0
+        },
+        "gnn": {
+          "mean_latency": 40.2,
+          "success_rate": 0.98,
+          "effect_size_pct": 14.53
+        }
+      }
+    }
+  },
+  "known_limitations": {
+    "root_readme_limitation": "Explanation of MARL limitations."
+  }
+}
+```
+
+---
+
+### `GET /benchmark/results/{scenario}`
+
+Returns benchmark metrics for a single specific scenario (e.g. `normal_traffic`, `high_congestion`).
+
+**Response:**
+Same schema as the individual scenario object inside `/benchmark/results`.
+
+---
+
+## 9. Error Handling
 
 All error responses follow FastAPI's standard format:
 
@@ -406,7 +454,7 @@ Or for structured errors:
 
 ---
 
-## 9. External APIs Used
+## 10. External APIs Used
 
 This project does **not** integrate with any external third-party APIs (such as Gemini, Ollama, or any cloud AI services). All AI/ML models are:
 

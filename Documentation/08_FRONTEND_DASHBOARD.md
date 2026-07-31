@@ -114,6 +114,14 @@ The best algorithm row is highlighted with an accent background.
 - Average link capacity
 - Count of congested links (utilization ≥ 0.7)
 
+### 3.8 Benchmark & Experiment Components
+
+Newly added for Phase 8 benchmarking:
+- **`ExperimentBuilder.jsx`**: Interface to define and launch custom simulation scenarios, selecting specific topologies, traffic patterns, and algorithms to compare (including `gnn`, `marl`, and `predictive` modes).
+- **`BenchmarkResultView.jsx`**: Full-screen or dedicated view to analyze benchmark results across multiple scenarios. Shows aggregate statistics, effect size percentages compared to Dijkstra, and standard deviation/variance.
+- **`BenchmarkReport.jsx`**: Child component for rendering individual benchmark summary reports.
+- **`GuardrailBadge.jsx`**: UI element to highlight safety boundaries or algorithmic limitations (e.g., fallback triggers).
+
 ---
 
 ## 4. Custom Hooks

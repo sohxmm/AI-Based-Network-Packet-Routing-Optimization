@@ -5,7 +5,7 @@ function RightPanel({ networkState }) {
   const linksCount = networkState?.links?.length ?? 0;
   
   const avgCapacity = linksCount > 0
-    ? (networkState.links.reduce((acc, link) => acc + link.capacity, 0) / linksCount).toFixed(0)
+    ? (networkState.links.reduce((acc, link) => acc + link.bandwidth, 0) / linksCount).toFixed(0)
     : 0;
 
   const congestedLinksCount = networkState?.links?.filter((l) => l.utilization >= 0.7).length ?? 0;

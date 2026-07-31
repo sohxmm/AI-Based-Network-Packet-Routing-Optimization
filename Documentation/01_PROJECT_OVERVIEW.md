@@ -7,9 +7,9 @@
 ### Project Goals
 
 - Simulate a dynamic network of routers and links with realistic traffic patterns
-- Implement and compare baseline and adaptive routing algorithms (Dijkstra, Bellman-Ford, ACO, RL)
+- Implement and compare baseline and adaptive routing algorithms (Dijkstra, Bellman-Ford, ACO, RL, GNN, MARL)
 - Predict congestion using time-series ML (LSTM)
-- Train a Reinforcement Learning routing agent (PPO) to learn optimal routing policies
+- Train Reinforcement Learning routing agents (PPO, MARL) and a Graph Neural Network (GNN) to learn optimal routing policies
 - Stream live network state to a React dashboard via WebSocket
 - Store routing events and network snapshots in PostgreSQL for historical analysis
 
@@ -78,11 +78,16 @@ AI-Based Network Packet Routing Optimization/
 │   │   ├── congestion_lstm.py         # LSTM congestion predictor
 │   │   ├── rl_environment.py          # Gymnasium RL environment
 │   │   ├── train_rl.py               # PPO training pipeline
+│   │   ├── train_gnn.py              # GNN training pipeline
+│   │   ├── train_multi_agent.py      # MARL training pipeline
+│   │   ├── gnn_model.py              # PyTorch GNN architecture
+│   │   ├── multi_agent_rl_environment.py # Multi-agent Gym env
 │   │   └── models/                    # Saved model checkpoints
 │   │       ├── best_model.zip
 │   │       ├── congestion_lstm.pt
 │   │       ├── rl_router_final.zip
-│   │       └── ppo_checkpoint_*.zip   # Periodic checkpoints
+│   │       ├── gnn_router.pt
+│   │       └── multi_agent_region_*.zip
 │   │
 │   ├── router/                        # Routing algorithm implementations
 │   │   ├── __init__.py
@@ -90,6 +95,8 @@ AI-Based Network Packet Routing Optimization/
 │   │   ├── bellman_ford.py            # Bellman-Ford algorithm
 │   │   ├── aco.py                     # Ant Colony Optimization
 │   │   ├── rl_agent.py                # PPO-based RL router
+│   │   ├── gnn_router.py              # GNN-based router
+│   │   ├── multi_agent_router.py      # MARL-based router
 │   │   ├── test_all_routers.py        # Router unit tests
 │   │   ├── test_stress_aco.py         # ACO stress tests
 │   │   └── test_stress_dijkstra.py    # Dijkstra stress tests
@@ -100,7 +107,12 @@ AI-Based Network Packet Routing Optimization/
 │   │   └── network_sim.py             # Core NetworkSimulator class
 │   │
 │   ├── test_integration.py            # End-to-end integration test
-│   └── test_stress_phase1.py          # Phase 1 stress test suite
+│   ├── test_gnn.py                    # GNN integration tests
+│   ├── test_stress_phase1.py          # Phase 1 stress test suite
+│   └── tests/                         # Pytest test suites (new)
+│       ├── test_predictive_routing.py
+│       ├── test_multi_agent_routing.py
+│       └── test_benchmark_*.py
 │
 ├── frontend/                          # React + Vite application
 │   ├── index.html                     # HTML entry point
@@ -122,7 +134,12 @@ AI-Based Network Packet Routing Optimization/
 │       │   ├── MetricsPanel.jsx        # Key metric cards
 │       │   ├── LeftPanel.jsx           # Queue size panel
 │       │   ├── RightPanel.jsx          # Topology stats panel
-│       │   └── PacketAnimator.jsx      # (Placeholder for animation)
+│       │   ├── PacketAnimator.jsx      # (Placeholder for animation)
+│       │   ├── ExperimentBuilder.jsx   # Phase 8 scenario builder
+│       │   ├── BenchmarkResultView.jsx # Phase 8 benchmark reporting
+│       │   ├── BenchmarkReport.jsx     # Phase 8 individual report
+│       │   ├── GuardrailBadge.jsx      # Safety limit indicator
+│       │   └── __tests__/              # React component tests
 │       │
 │       ├── hooks/
 │       │   ├── useNetworkStream.js     # WebSocket live data hook
@@ -149,6 +166,7 @@ AI-Based Network Packet Routing Optimization/
 | Phase 5 | RL environment & PPO training        | ✅ Complete |
 | Phase 6 | React dashboard                      | ✅ Complete |
 | Phase 7 | Integration, polish & theming        | ✅ Complete |
+| Phase 8 | Advanced algorithms & Benchmarking   | ✅ Complete |
 
 ---
 
