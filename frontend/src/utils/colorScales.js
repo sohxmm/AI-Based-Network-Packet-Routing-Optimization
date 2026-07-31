@@ -1,4 +1,3 @@
-// TODO: implement
 import * as d3 from "d3";
 
 export const utilizationColor = d3
