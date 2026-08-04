@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 router = APIRouter(prefix="/experiments", tags=["experiments"])
@@ -105,7 +105,7 @@ async def _run_experiment(job_id: str, config: ExperimentConfig) -> None:
 
 
 @router.post("")
-async def create_experiment(config: ExperimentConfig) -> dict:
+async def create_experiment(config: ExperimentConfig, background_tasks: BackgroundTasks) -> dict:
     """Submit a new experiment job.
 
     Hard caps enforced server-side:
@@ -127,7 +127,7 @@ async def create_experiment(config: ExperimentConfig) -> dict:
     }
 
     # Launch the job as a background task
-    asyncio.create_task(_run_experiment(job_id, config))
+    background_tasks.add_task(_run_experiment, job_id, config)
 
     return {"job_id": job_id}
 

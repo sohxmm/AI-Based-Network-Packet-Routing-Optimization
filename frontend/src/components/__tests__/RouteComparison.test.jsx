@@ -100,7 +100,7 @@ describe("RouteComparison badges", () => {
       />
     );
 
-    const matchBadges = screen.getAllByTitle("Matches Dijkstra — no differentiation");
+    const matchBadges = screen.getAllByTitle("Matches Dijkstra, no differentiation");
     expect(matchBadges.length).toBeGreaterThan(0);
   });
 
@@ -137,7 +137,7 @@ describe("RouteComparison badges", () => {
       />
     );
 
-    const matchBadges = screen.queryAllByTitle("Matches Dijkstra — no differentiation");
+    const matchBadges = screen.queryAllByTitle("Matches Dijkstra, no differentiation");
     expect(matchBadges.length).toBe(0);
   });
 
@@ -173,7 +173,7 @@ describe("RouteComparison badges", () => {
       />
     );
 
-    const matchBadges = screen.queryAllByTitle("Matches Dijkstra — no differentiation");
+    const matchBadges = screen.queryAllByTitle("Matches Dijkstra, no differentiation");
     expect(matchBadges.length).toBe(0);
   });
 });

@@ -18,7 +18,7 @@ const BADGE_CONFIG = {
     icon: "⚠",
   },
   "dijkstra-match": {
-    label: "Matches Dijkstra — no differentiation",
+    label: "Matches Dijkstra, no differentiation",
     className:
       "bg-amber-500/20 text-amber-400 border border-amber-500/30",
     icon: "≡",

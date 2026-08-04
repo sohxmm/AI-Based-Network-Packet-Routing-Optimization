@@ -27,7 +27,7 @@ const MAX_TOTAL_DECISIONS = 3000;
 // Observed throughput: ~8000 decisions in ~2.5 min = 3200 decisions/min
 const DECISIONS_PER_MINUTE = 3200;
 
-export default function ExperimentBuilder({ onRunStart, onRunComplete }) {
+export default function ExperimentBuilder({ onRunStart, onResults }) {
   // ── Config form state ─────────────────────────────────────────────────
   const [topologySize, setTopologySize] = useState(25);
   const [congestionProfile, setCongestionProfile] = useState("normal");
