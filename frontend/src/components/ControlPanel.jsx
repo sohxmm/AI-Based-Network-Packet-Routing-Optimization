@@ -75,7 +75,7 @@ function ControlPanel({ networkState, isLoading, onSimulatorAction }) {
             </option>
           ))}
         </select>
-        <span className="text-app-muted text-sm">—</span>
+        <span className="text-app-muted text-sm">→</span>
         <select
           className="h-9 min-w-[70px] rounded border border-app-border bg-app-input-bg px-2 text-sm text-app-text outline-none focus:border-app-accent"
           value={activeTarget}
