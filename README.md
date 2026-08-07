@@ -151,6 +151,63 @@ Navigate to **[http://localhost:5173](http://localhost:5173)** to view the live 
 
 ---
 
+## 🐳 Docker Deployment
+
+For a fully containerized deployment (no local Python or Node.js setup required), the entire stack can be launched with a single command. Pre-trained models are baked into the backend image — no training wait on first run.
+
+### Prerequisites
+- Docker Desktop
+
+### Run the Full Stack
+
+```bash
+git clone https://github.com/SwDC-kjsse/ai--ml-3
+cd ai--ml-3
+cp .env.example .env
+docker compose up --build
+```
+
+This single command starts all four services:
+
+| Service | Container | URL |
+| :--- | :--- | :--- |
+| React Dashboard | `routing-frontend` | http://localhost:5173 |
+| FastAPI Backend | `routing-backend` | http://localhost:8000/docs |
+| PostgreSQL | `routing-db` | `localhost:5433` |
+| pgAdmin | `routing-pgadmin` | http://localhost:5050 |
+
+### Subsequent Runs
+
+After the initial build, start the stack instantly with:
+
+```bash
+docker compose up
+```
+
+### Stop the Stack
+
+```bash
+docker compose down
+```
+
+To also remove all stored data (database volumes):
+
+```bash
+docker compose down -v
+```
+
+### Docker vs Manual Setup
+
+| | Docker | Manual |
+| :--- | :--- | :--- |
+| Setup time | One command | Multiple terminals |
+| Python/Node.js required | ❌ | ✅ |
+| Pre-trained models | ✅ Baked in | ✅ On disk |
+| Hot reload | ❌ | ✅ |
+| Best for | Deployment / sharing | Development |
+
+> **Note:** Pre-trained PPO and GNN models are included in the image. The system is ready to route immediately after `docker compose up --build` completes.
+---
 ## 📘 Documentation
 
 For detailed guides, refer to the [Documentation/](./Documentation/) directory:
