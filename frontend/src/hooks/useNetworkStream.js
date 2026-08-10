@@ -1,11 +1,8 @@
 import { useEffect, useState } from "react";
 
-function defaultWebSocketUrl() {
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.hostname}:8000/ws/stream`;
-}
+import { wsUrl } from "../config.js";
 
-export function useNetworkStream(url = defaultWebSocketUrl()) {
+export function useNetworkStream(url = wsUrl("/ws/stream")) {
   const [networkState, setNetworkState] = useState(null);
   const [lastRoutingEvent, setLastRoutingEvent] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
