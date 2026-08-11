@@ -113,7 +113,7 @@ describe("ExperimentBuilder form", () => {
 
     // After submission, the fetch should have been called with the experiment config
     expect(global.fetch).toHaveBeenCalledWith(
-      "http://localhost:8000/experiments",
+      "/experiments",
       expect.objectContaining({
         method: "POST",
         headers: { "Content-Type": "application/json" },

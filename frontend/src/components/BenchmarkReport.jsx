@@ -13,7 +13,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { BenchmarkResultView } from "./BenchmarkResultView.jsx";
 export { BenchmarkResultView };
 
-const API_BASE = "http://localhost:8000";
+import { API_BASE_URL as API_BASE } from "../config.js";
 
 const SCENARIO_LABELS = {
   normal_traffic: "Normal Traffic",

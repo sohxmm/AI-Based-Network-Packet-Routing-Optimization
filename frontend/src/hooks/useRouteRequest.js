@@ -1,7 +1,5 @@
 import { useCallback, useState } from "react";
-
-const API_BASE_URL = "http://localhost:8000";
-
+import { API_BASE_URL } from "../config.js";
 export function useRouteRequest() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
