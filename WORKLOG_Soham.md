@@ -1,6 +1,6 @@
 # Internship Work Log
 
-Total hours: 136.0
+Total hours: 138.0
 
 ## 09/06/2026
 
@@ -401,3 +401,16 @@ Tasks:
 
 Status:
 - UI improvements for AI Insights panel implemented
+
+## 11/08/2026
+
+Hours: 2.0
+
+Tasks:
+- Reframed project narrative in README.md to present an evidence-backed thesis, adding headline results and documenting open-loop limitations
+- Eliminated hardcoded backend URLs across the frontend components and hooks, introducing dynamic VITE_API_BASE_URL logic
+- Configured Nginx proxy as the single transport path for all backend routes, making the app fully portable and deployable
+- Updated frontend vite proxy config and backend CORS rules for flexible local development and production deployment
+
+Status:
+- Project documentation is more transparent, and the application architecture is fully production-ready and portable
