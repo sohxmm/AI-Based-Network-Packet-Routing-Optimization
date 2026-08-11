@@ -1,16 +1,26 @@
-from __future__ import annotations
+"""Sequence model that forecasts next-step link utilization.
 
-from pathlib import Path
+This file holds the ``nn.Module`` and nothing else. It previously also contained
+the data collector, the trainer, the inference wrapper and a ``__main__``
+training block — four responsibilities in one module, and the reason the model
+had no train/validation/test split and no baseline comparison. Training now
+lives in ``ml/training/train_lstm.py`` and inference in
+``routing/learned/forecaster.py``.
+"""
+
+from __future__ import annotations
 
 import torch
 from torch import nn
-from torch.utils.data import DataLoader, TensorDataset
-
-from simulator.network_sim import NetworkSimulator
 
 
 class CongestionLSTM(nn.Module):
-    """Predict next-step link utilization from recent utilization windows."""
+    """Predict the next utilization vector from a window of recent snapshots.
+
+    Input  ``[batch, seq_len, n_links]``
+    Output ``[batch, n_links]`` in [0, 1] via a sigmoid, matching the domain of
+    utilization exactly so the model cannot emit impossible values.
+    """
 
     def __init__(
         self,
@@ -20,6 +30,10 @@ class CongestionLSTM(nn.Module):
         dropout: float = 0.2,
     ) -> None:
         super().__init__()
+        self.n_links = n_links
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+
         self.lstm = nn.LSTM(
             input_size=n_links,
             hidden_size=hidden_size,
@@ -36,140 +50,9 @@ class CongestionLSTM(nn.Module):
         last_step = sequence_output[:, -1, :]
         return torch.sigmoid(self.output(self.dropout(last_step)))
 
-
-class CongestionPredictor:
-    """Collect simulator data, train the LSTM, and produce utilization forecasts."""
-
-    def __init__(self, seq_len: int = 10, device: str | None = None) -> None:
-        self.seq_len = seq_len
-        self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
-        self.model: CongestionLSTM | None = None
-        self.history: list[list[float]] = []
-        self.link_keys: list[str] = []
-
-    def collect_data(self, simulator: NetworkSimulator, steps: int = 2000) -> list[list[float]]:
-        """Run the simulator and collect link utilization snapshots."""
-        snapshots: list[list[float]] = []
-        for _ in range(steps):
-            state = simulator.step()
-            if not self.link_keys:
-                self.link_keys = [f"{link.source}-{link.target}" for link in state.links]
-            snapshots.append([link.utilization for link in state.links])
-
-        self.history = snapshots
-        return snapshots
-
-    def prepare_dataset(
-        self,
-        snapshots: list[list[float]] | None = None,
-        batch_size: int = 32,
-    ) -> DataLoader:
-        """Build sliding-window samples where 10 snapshots predict the next one."""
-        values = snapshots or self.history
-        if len(values) <= self.seq_len:
-            raise ValueError("Not enough snapshots to build an LSTM dataset.")
-
-        inputs = []
-        targets = []
-        for index in range(len(values) - self.seq_len):
-            inputs.append(values[index:index + self.seq_len])
-            targets.append(values[index + self.seq_len])
-
-        dataset = TensorDataset(
-            torch.tensor(inputs, dtype=torch.float32),
-            torch.tensor(targets, dtype=torch.float32),
-        )
-        return DataLoader(dataset, batch_size=batch_size, shuffle=True)
-
-    def train(
-        self,
-        snapshots: list[list[float]] | None = None,
-        epochs: int = 30,
-        learning_rate: float = 0.001,
-    ) -> list[float]:
-        """Train the LSTM and return epoch losses."""
-        values = snapshots or self.history
-        if not values:
-            raise ValueError("No training snapshots available.")
-
-        self.model = CongestionLSTM(n_links=len(values[0])).to(self.device)
-        loader = self.prepare_dataset(values)
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate)
-        criterion = nn.MSELoss()
-        losses: list[float] = []
-
-        self.model.train()
-        for _ in range(epochs):
-            total_loss = 0.0
-            for features, targets in loader:
-                features = features.to(self.device)
-                targets = targets.to(self.device)
-                optimizer.zero_grad()
-                predictions = self.model(features)
-                loss = criterion(predictions, targets)
-                loss.backward()
-                optimizer.step()
-                total_loss += loss.item()
-            losses.append(total_loss / max(1, len(loader)))
-
-        return losses
-
-    def predict_next(self, recent_snapshots: list[list[float]]) -> list[float]:
-        """Predict the next utilization vector, or persist the latest vector safely."""
-        if not recent_snapshots:
-            return []
-
-        if self.model is None or len(recent_snapshots) < self.seq_len:
-            return recent_snapshots[-1]
-
-        window = recent_snapshots[-self.seq_len:]
-        features = torch.tensor([window], dtype=torch.float32, device=self.device)
-
-        self.model.eval()
-        with torch.no_grad():
-            prediction = self.model(features).cpu().squeeze(0).tolist()
-
-        return [float(max(0.0, min(1.0, value))) for value in prediction]
-
-    def save(self, path: str | Path) -> None:
-        """Save the trained model and predictor metadata."""
-        if self.model is None:
-            raise ValueError("Cannot save before training a model.")
-
-        destination = Path(path)
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        torch.save(
-            {
-                "state_dict": self.model.state_dict(),
-                "n_links": self.model.output.out_features,
-                "seq_len": self.seq_len,
-                "link_keys": self.link_keys,
-            },
-            destination,
-        )
-
-    def load(self, path: str | Path) -> None:
-        """Load a previously trained congestion model."""
-        checkpoint = torch.load(path, map_location=self.device)
-        self.seq_len = checkpoint["seq_len"]
-        self.link_keys = checkpoint.get("link_keys", [])
-        self.model = CongestionLSTM(n_links=checkpoint["n_links"]).to(self.device)
-        self.model.load_state_dict(checkpoint["state_dict"])
+    def parameter_count(self) -> int:
+        """Total trainable parameters, reported in the model card."""
+        return sum(p.numel() for p in self.parameters())
 
 
-if __name__ == "__main__":
-    simulator = NetworkSimulator(seed=42)
-    predictor = CongestionPredictor(seq_len=10)
-    data = predictor.collect_data(simulator, steps=2000)
-    losses = predictor.train(data, epochs=30)
-    predictor.save(Path(__file__).parent / "models" / "congestion_lstm.pt")
-
-    print(f"Final validation-style loss: {losses[-1]:.6f}")
-    for index in range(5):
-        start = index
-        window = data[start:start + predictor.seq_len]
-        actual = data[start + predictor.seq_len]
-        predicted = predictor.predict_next(window)
-        print(f"Prediction {index + 1}:")
-        print(f"  predicted={predicted[:5]}")
-        print(f"  actual={actual[:5]}")
+__all__ = ["CongestionLSTM"]
