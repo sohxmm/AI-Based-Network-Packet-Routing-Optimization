@@ -1,6 +1,6 @@
 # Internship Work Log
 
-Total hours: 157
+Total hours: 163
 
 ## 09/06/2026
 
@@ -486,3 +486,21 @@ Tasks:
 
 Status:
 - There is a real signal to learn, measured at random -45.2 against oracle -31.9 on a 200-step episode
+
+## 18/08/2026
+
+Hours: 6.0
+
+Tasks:
+- Rewrote all four training pipelines and the benchmark harness
+- GNN: changed message aggregation from unnormalised sum to mean, because embedding magnitudes were scaling with node degree; replaced node-mean path pooling, which was permutation invariant, length invariant and edge blind, so the model was asked to predict a path's cost while being shown neither its length nor its links; switched from MSE to a pairwise margin ranking loss, since the output is only ever consumed by argmin
+- Gave the GNN a genuinely independent validation set from a different seed. The old one continued the same simulator instance, so the reported "72% val MSE reduction" was not evidence of generalisation
+- Trained it: held-out top-1 accuracy 0.978 against 0.227 for random, mean regret 0.0006 against 0.676
+- LSTM: wrote a real pipeline with a chronological 70/15/15 split and a persistence baseline. First run scored a skill score of -1.77 and the script refused to save the checkpoint, which is the behaviour I wanted
+- Diagnosed it: predicting the utilization *level* means competing with persistence, which on a strongly autocorrelated series is right to within the one-step noise almost every time. The network spent its capacity relearning the identity. Rewrote it to predict the residual, differencing the input window and re-attaching the level on output. Second run scored +0.1497 and saved
+- Rewrote the scenarios as declarative dataclasses. `high_congestion` no longer adds +0.4 cumulatively every step, which saturated everything within 10 steps and collapsed the ranking to base-latency order, and link failures now persist instead of re-randomising every tick
+- Added `cascading_failure` and `qos_mixed_traffic`
+- Added `experiments/statistics.py` and `ml/evaluation/baselines.py`: Cliff's delta, Wilcoxon, bootstrap CIs, path entropy, and random / greedy / oracle policies for normalising a raw return
+
+Status:
+- Every model beats a stated baseline on its own task, and every scenario stresses what its name claims
