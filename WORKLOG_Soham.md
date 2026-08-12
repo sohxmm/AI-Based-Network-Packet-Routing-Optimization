@@ -1,6 +1,6 @@
 # Internship Work Log
 
-Total hours: 138.0
+Total hours: 140.5
 
 ## 09/06/2026
 
@@ -414,3 +414,20 @@ Tasks:
 
 Status:
 - Project documentation is more transparent, and the application architecture is fully production-ready and portable
+
+## 12/08/2026
+
+Hours: 2.5
+
+Tasks:
+- Re-read the original problem statement and reviewed the project against it end to end before touching anything
+- Added the problem statement document to the repository so the target is on record
+- Reproduced four suspected defects rather than assuming them, because a fix aimed at the wrong cause is worse than no fix
+- Confirmed the RL router loads `rl_router_final.zip` while the repo ships `ppo_routing_agent.zip`; the resulting FileNotFoundError is swallowed by `except (FileNotFoundError, ImportError, Exception): return False` with no logging, so the "RL" results were a heuristic
+- Regressed `runs/ppo_routing/evaluations.npz`: slope -0.094 per 100k steps, r-squared 0.001, p 0.878, and the best checkpoint is the first one taken at 25k. The agent had not learned
+- Read `network_sim.py:57` and confirmed utilization evolves as a random walk independent of routing, which makes per-path latency minimisation exactly optimal and leaves nothing for a learned policy to win
+- Verified the 100-node topology is a pure ring: 100 edges, every node degree 2, diameter 50
+- Sequenced the rebuild by dependency so the project stays working at every commit
+
+Status:
+- All four defects reproduced independently. Rebuild plan sequenced
