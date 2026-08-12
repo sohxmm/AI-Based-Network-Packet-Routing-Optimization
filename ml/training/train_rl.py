@@ -13,9 +13,11 @@ Fixes applied here, on top of the environment repairs in
   because the loader swallowed the resulting ``FileNotFoundError`` in silence.
 * **Seeded.** ``PPO(...)`` was constructed without a seed, so no run was
   reproducible.
-* **TensorBoard actually configured.** The old script printed "TensorBoard logs
+* **TensorBoard claims match reality.** The old script printed "TensorBoard logs
   -> ..." and told the user to run ``tensorboard --logdir``, but never passed
-  ``tensorboard_log=``, so there were no event files to read.
+  ``tensorboard_log=``, so there were no event files to read. It is now wired up
+  when ``tensorboard`` is installed, and the script says so explicitly when it
+  is not, rather than pointing at a directory that will stay empty.
 * **Baselines reported.** The run ends by evaluating random, Dijkstra-equivalent
   and oracle policies on the same seeded episodes and printing the normalized
   score, because a raw episode return conveys nothing on its own.
@@ -45,6 +47,20 @@ logger = logging.getLogger("train_rl")
 LOG_DIR = Path(__file__).resolve().parents[2] / "experiments" / "runs" / "ppo_routing"
 
 
+def _tensorboard_dir() -> str | None:
+    """Return the log directory only if tensorboard can actually consume it.
+
+    Passing tensorboard_log= without the package installed makes SB3 raise, and
+    passing it while claiming logs exist when they do not is exactly the defect
+    we are trying to avoid. Neither is acceptable, so we check.
+    """
+    try:
+        import tensorboard  # noqa: F401
+    except ImportError:
+        return None
+    return str(LOG_DIR)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train the PPO routing policy.")
     parser.add_argument("--timesteps", type=int, default=300_000)
@@ -59,6 +75,9 @@ def main() -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s", datefmt="%H:%M:%S"
     )
+    # Each episode builds a fresh simulator, which logs its topology at INFO.
+    # That is useful once and noise 10,000 times.
+    logging.getLogger("core.simulator").setLevel(logging.WARNING)
 
     model_dir = path_for("rl").parent
     model_dir.mkdir(parents=True, exist_ok=True)
@@ -78,6 +97,15 @@ def main() -> None:
     train_env = Monitor(NetworkRoutingEnv(num_nodes=args.num_nodes, seed=args.seed))
     eval_env = Monitor(NetworkRoutingEnv(num_nodes=args.num_nodes, seed=args.seed + 57))
 
+    tensorboard_dir = _tensorboard_dir()
+    if tensorboard_dir:
+        logger.info("      TensorBoard logs -> %s", tensorboard_dir)
+    else:
+        logger.info(
+            "      tensorboard is not installed, so no event files will be "
+            "written. Install it with: pip install tensorboard"
+        )
+
     logger.info("[3/5] Initialising PPO (seed=%d)...", args.seed)
     model = PPO(
         policy="MlpPolicy",
@@ -93,7 +121,7 @@ def main() -> None:
         vf_coef=0.5,
         max_grad_norm=0.5,
         seed=args.seed,
-        tensorboard_log=str(LOG_DIR),
+        tensorboard_log=tensorboard_dir,
         device="cpu",
         verbose=0,
     )

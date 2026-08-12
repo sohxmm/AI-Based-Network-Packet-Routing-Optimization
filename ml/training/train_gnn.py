@@ -203,6 +203,9 @@ def main() -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s", datefmt="%H:%M:%S"
     )
+    # Each episode builds a fresh simulator, which logs its topology at INFO.
+    # That is useful once and noise 10,000 times.
+    logging.getLogger("core.simulator").setLevel(logging.WARNING)
 
     torch.manual_seed(args.seed)
     random.seed(args.seed)

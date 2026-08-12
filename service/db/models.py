@@ -1,60 +1,87 @@
-from datetime import datetime
-from sqlalchemy import Column, String, Float, Integer, JSON, DateTime, Boolean
+"""SQLAlchemy models.
+
+Two changes from the audited schema:
+
+* ``PacketLog`` is gone. It had zero references anywhere in the codebase —
+  infrastructure for its own sake, which reads as padding.
+* ``RoutingEvent`` gains ``avg_utilization``. The metrics endpoint computed
+  ``congestion_events`` from ``getattr(e, "avg_utilization", 0.0)``, but the
+  column did not exist, so the default always applied and the metric was
+  silently, permanently zero.
+
+``AlgorithmMetric`` is kept and *activated*: the benchmark used to build these
+rows and then throw them away behind a commented-out commit, which is dead code
+that looks live. It is now written when ``--persist`` is passed and readable via
+``GET /metrics/benchmark-history``.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+from sqlalchemy import Boolean, Column, DateTime, Float, Integer, JSON, String
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
 
 
+def _utcnow() -> datetime:
+    """Timezone-aware UTC now. ``datetime.utcnow()`` is deprecated."""
+    return datetime.now(timezone.utc)
+
+
 class RoutingEvent(Base):
-    """Log of every routing decision made by the system."""
+    """One routing decision made by the system."""
+
     __tablename__ = "routing_events"
-    
-    # Columns
-    id = Column(String, primary_key=True)  # UUID string
-    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
-    source = Column(String, index=True)  # Router ID (e.g., "R1")
-    destination = Column(String, index=True)  # Router ID (e.g., "R10")
-    algorithm = Column(String, index=True)  # "dijkstra" | "bellman_ford" | "aco" | "rl"
-    path = Column(JSON)  # List of router IDs: ["R1", "R3", "R5"]
-    total_latency = Column(Float)  # milliseconds
-    success = Column(Boolean)  # Did route find path?
-    step_count = Column(Integer, index=True)  # Simulator step when decision made
+
+    id = Column(String, primary_key=True)
+    timestamp = Column(DateTime(timezone=True), default=_utcnow, index=True)
+    source = Column(String, index=True)
+    destination = Column(String, index=True)
+    algorithm = Column(String, index=True)
+    traffic_class = Column(String, index=True)
+    path = Column(JSON)
+    total_latency = Column(Float)
+    avg_utilization = Column(Float)
+    success = Column(Boolean)
+    is_fallback = Column(Boolean, default=False)
+    qos_feasible = Column(Boolean)
+    step_count = Column(Integer, index=True)
 
 
 class NetworkSnapshot(Base):
-    """Complete network state snapshot at a point in time."""
+    """A full network state at one instant.
+
+    Written every Nth tick rather than every tick. At 1 Hz with ~10 KB rows this
+    table grew about 860 MB/day, unbounded, and the write was awaited inside the
+    simulator loop so a slow database stalled the simulation itself.
+    """
+
     __tablename__ = "network_snapshots"
-    
-    id = Column(String, primary_key=True)  # UUID
-    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
-    state_json = Column(JSON)  # Entire NetworkState as JSON
-    avg_utilization = Column(Float)  # Average link utilization (0-1)
-    congested_links = Column(Integer)  # Count of links with util > 0.7
+
+    id = Column(String, primary_key=True)
+    timestamp = Column(DateTime(timezone=True), default=_utcnow, index=True)
+    state_json = Column(JSON)
+    avg_utilization = Column(Float)
+    congested_links = Column(Integer)
     step_count = Column(Integer, index=True)
 
 
 class AlgorithmMetric(Base):
-    """Aggregate performance metrics per algorithm over a time window."""
+    """Aggregate benchmark metrics for one algorithm in one scenario."""
+
     __tablename__ = "algorithm_metrics"
-    
+
     id = Column(String, primary_key=True)
-    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    timestamp = Column(DateTime(timezone=True), default=_utcnow, index=True)
     algorithm = Column(String, index=True)
+    scenario = Column(String, index=True)
     window_start_step = Column(Integer)
     window_end_step = Column(Integer)
-    avg_latency = Column(Float)  # Average latency for all decisions in window
-    success_rate = Column(Float)  # % of decisions that found a path
+    avg_latency = Column(Float)
+    success_rate = Column(Float)
     num_decisions = Column(Integer)
 
 
-class PacketLog(Base):
-    """Log of simulated packet transmissions."""
-    __tablename__ = "packet_logs"
-    
-    id = Column(String, primary_key=True)
-    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
-    source = Column(String, index=True)
-    destination = Column(String, index=True)
-    path = Column(JSON)  # ["R1", "R3", "R10"]
-    success = Column(Boolean)  # Did packet reach destination?
-    arrival_time = Column(Float)  # Simulated arrival time
+__all__ = ["AlgorithmMetric", "Base", "NetworkSnapshot", "RoutingEvent"]
