@@ -1,6 +1,6 @@
 # Internship Work Log
 
-Total hours: 153.5
+Total hours: 157
 
 ## 09/06/2026
 
@@ -470,3 +470,19 @@ Tasks:
 
 Status:
 - Silent model-loading failures are now structurally impossible, and every algorithm answers the same interface
+
+## 17/08/2026
+
+Hours: 3.5
+
+Tasks:
+- Rebuilt the RL environments so the task is actually learnable
+- The old observation encoded per-link features only while the environment resampled (src, dst) every step. The agent was asked to pick "path index 2" without being told which pair it was routing, and the meaning of index 2 changed between steps. That is not a partially observable MDP, it is an unobservable one, and it fully explains the flat evaluation curve
+- New observation is 286 dimensions in four blocks: link state, the task as one-hot source and destination, per-candidate features, and the QoS class
+- Fixed the reward and observation ordering so both describe the same decision
+- Made each episode start from a freshly seeded simulator; the old one never reset, so utilization random-walked to the boundaries and the agent trained on states it would never serve
+- Registered the chosen path before the tick so the global load term has real gradient. Previously it was computed over all links independent of the action, which in policy-gradient terms is a pure state-dependent baseline contributing exactly zero
+- Rebuilt the regional environment for genuine decentralised execution: a local observation of constant width, and a single next-hop action instead of a complete end-to-end path
+
+Status:
+- There is a real signal to learn, measured at random -45.2 against oracle -31.9 on a 200-step episode

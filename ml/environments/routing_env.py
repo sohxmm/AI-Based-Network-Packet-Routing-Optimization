@@ -1,94 +1,78 @@
-"""NetworkRoutingEnv – Gymnasium environment for PPO-based routing.
+"""NetworkRoutingEnv — Gymnasium environment for the single-agent PPO router.
 
-Observation space (flat, normalised to [0, 1]):
-  Per link: [utilization, queue_size/100, packet_loss_rate/0.06, base_latency/100]
-  → shape (n_links * 4,)
+Every defect in the previous version is addressed here, and each one alone
+was enough to prevent learning.
 
-Action space:
-  Discrete – index of the chosen candidate path (0 … k-1) for a randomly
-  sampled (src, dst) pair that is resampled every episode step.
+**The task was not observable.** The observation encoded per-link features only.
+It never encoded the source or the destination, while ``_sample_routing_task()``
+re-drew ``(src, dst)`` *every step*. The agent was asked to pick "path index 2"
+without being told which pair it was routing, and the meaning of index 2 changed
+completely between steps. That is not a partially observable MDP, it is an
+unobservable one, and it fully explains the flat evaluation curve we
+measured (slope not significant, r-squared 0.001 over 500k timesteps). The
+observation now contains the task and the features of each candidate.
 
-Reward:
-  r = -w_latency * normalised_latency - w_util * mean_utilization - w_loss * mean_loss
-      - congestion_penalty
+**Reward and observation described different problems.** Reward was computed
+from the pre-step state, then the task was resampled, then the observation was
+built — so ``obs_{t+1}`` described a different routing problem than ``r_t``
+scored. Ordering is now explicit and commented.
 
-The episode runs for a fixed horizon (default 200 steps); done is set by
-a step counter only (no terminal state in the network model).
+**The load-balancing terms had zero gradient.** ``util_variance`` and
+``max_util`` were computed over *all* links, independent of the action taken. In
+policy-gradient terms that is a pure state-dependent baseline: it shifts returns
+and adds variance while contributing nothing to the policy gradient. Now that
+the simulator is closed-loop, the chosen path is registered *before* the tick and
+the global term is measured on the resulting state, so it genuinely depends on
+what the agent did.
+
+**Train/serve skew.** Training drew candidates ordered by congestion-adjusted
+cost while inference used an unweighted hop-count ordering, so action index *k*
+meant different paths in each. Both now call
+:func:`core.paths.candidate_paths`.
+
+**A non-stationary training distribution.** The simulator was never reset
+between episodes, so utilization random-walked to the [0,1] boundaries and the
+agent spent most of its budget on states it would never see at inference. Each
+episode now starts from a freshly seeded simulator.
 """
 
 from __future__ import annotations
 
 import random
-import sys
-from pathlib import Path
 from typing import Any
 
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
-# Allow the environment to be imported both as a module and via direct
-# execution when sys.path does not yet contain the backend root.
-_BACKEND_ROOT = Path(__file__).resolve().parents[1]
-if str(_BACKEND_ROOT) not in sys.path:
-    sys.path.insert(0, str(_BACKEND_ROOT))
+from core.cost import MAX_LATENCY_MS
+from core.paths import candidate_paths
+from core.qos import ALL_CLASSES, QOS_PROFILES, evaluate_path, get_profile
+from core.simulator import NetworkSimulator
+from ml.features import K_PATHS, build_observation, observation_dim
 
-from simulator.network_sim import NetworkSimulator
+EPISODE_STEPS = 200
 
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-_MAX_LATENCY_MS = 200.0        # upper bound used for normalisation
-_MAX_QUEUE = 100.0             # queue_size is already 0-100 in the sim
-_MAX_LOSS = 0.06               # max theoretical loss from the sim formula
-_MAX_BASE_LATENCY = 25.0       # sim samples base_latency in [5, 25]
-_K_PATHS = 5                   # candidate paths exposed to the agent
-_EPISODE_STEPS = 200           # steps before truncation
+#: Reward shaping weights. Kept small and named so the model card can quote them.
+W_QOS = 1.0
+W_INFEASIBLE = 0.5
+W_GLOBAL_LOAD = 0.6
+W_BOTTLENECK = 0.4
 
 
-# ---------------------------------------------------------------------------
-# Helper: flatten a NetworkState into a normalised numpy observation
-# ---------------------------------------------------------------------------
-def _state_to_obs(state, n_links: int) -> np.ndarray:
-    """Return a float32 array of shape (n_links * 4,) normalised to [0, 1]."""
-    obs = np.zeros(n_links * 4, dtype=np.float32)
-    for i, link in enumerate(state.links[:n_links]):
-        base = i * 4
-        obs[base + 0] = float(np.clip(link.utilization, 0.0, 1.0))
-        obs[base + 1] = float(np.clip(link.queue_size / _MAX_QUEUE, 0.0, 1.0))
-        obs[base + 2] = float(np.clip(link.packet_loss_rate / max(_MAX_LOSS, 1e-9), 0.0, 1.0))
-        obs[base + 3] = float(np.clip(link.base_latency / _MAX_BASE_LATENCY, 0.0, 1.0))
-    return obs
-
-
-# ---------------------------------------------------------------------------
-# Environment
-# ---------------------------------------------------------------------------
 class NetworkRoutingEnv(gym.Env):
-    """Gymnasium environment for AI-based network packet routing.
-
-    The agent selects one of *k* pre-computed candidate paths between a
-    randomly chosen (src, dst) pair at each step.  The simulator advances
-    one tick after each action, so the observation at the next step reflects
-    the consequences of congestion evolution.
-    """
+    """Choose one of k candidate paths for a sampled demand and traffic class."""
 
     metadata = {"render_modes": ["human"]}
-
-    # reward weights --------------------------------------------------------
-    W_LATENCY = 0.5
-    W_UTIL = 0.3
-    W_LOSS = 0.2
-    CONGESTION_THRESHOLD = 0.85
-    CONGESTION_PENALTY = 2.0
 
     def __init__(
         self,
         num_nodes: int = 25,
         seed: int = 42,
-        k_paths: int = _K_PATHS,
-        episode_steps: int = _EPISODE_STEPS,
+        k_paths: int = K_PATHS,
+        episode_steps: int = EPISODE_STEPS,
+        background_flows: int = 3,
+        qos_classes: list | None = None,
         render_mode: str | None = None,
     ) -> None:
         super().__init__()
@@ -96,168 +80,194 @@ class NetworkRoutingEnv(gym.Env):
         self.num_nodes = num_nodes
         self.k_paths = k_paths
         self.episode_steps = episode_steps
+        self.background_flows = background_flows
         self.render_mode = render_mode
+        self.qos_classes = list(qos_classes) if qos_classes else list(ALL_CLASSES)
 
-        # Build the simulator ------------------------------------------------
-        self._sim = NetworkSimulator(num_nodes=num_nodes, seed=seed)
+        self._base_seed = seed
+        self._episode_index = 0
         self._rng = random.Random(seed)
-        initial_state = self._sim.get_state()
-        self.n_links: int = len(initial_state.links)
-        self._nodes: list[str] = initial_state.nodes
+        self._sim = self._new_simulator(seed)
 
-        # Spaces -------------------------------------------------------------
-        obs_dim = self.n_links * 4
+        initial = self._sim.get_state()
+        self.n_links = len(initial.links)
+        self.n_nodes = len(initial.nodes)
+        self._nodes = list(initial.nodes)
+        self._node_to_idx = {node: i for i, node in enumerate(self._nodes)}
+
         self.observation_space = spaces.Box(
-            low=0.0, high=1.0, shape=(obs_dim,), dtype=np.float32
+            low=0.0,
+            high=1.0,
+            shape=(observation_dim(self.n_links, self.n_nodes),),
+            dtype=np.float32,
         )
         self.action_space = spaces.Discrete(k_paths)
 
-        # Episode bookkeeping ------------------------------------------------
-        self._step_count: int = 0
-        self._current_src: str = ""
-        self._current_dst: str = ""
+        self._step_count = 0
+        self._current_src = ""
+        self._current_dst = ""
         self._current_paths: list[list[str]] = []
+        self._current_profile = get_profile(None)
 
-    # ------------------------------------------------------------------
-    # Gymnasium API
-    # ------------------------------------------------------------------
+    def _new_simulator(self, seed: int) -> NetworkSimulator:
+        return NetworkSimulator(
+            num_nodes=self.num_nodes,
+            seed=seed,
+            background_flows=self.background_flows,
+        )
+
+    # -- Gymnasium API ----------------------------------------------------
 
     def reset(
-        self,
-        *,
-        seed: int | None = None,
-        options: dict[str, Any] | None = None,
+        self, *, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[np.ndarray, dict]:
         super().reset(seed=seed)
-        if seed is not None:
-            self._rng = random.Random(seed)
-            self._sim = NetworkSimulator(num_nodes=self.num_nodes, seed=seed)
-            self._nodes = self._sim.get_state().nodes
+
+        # A fresh simulator per episode. Without this the utilization process
+        # saturates and the agent trains on a distribution it never sees served.
+        episode_seed = seed if seed is not None else self._base_seed + self._episode_index
+        self._episode_index += 1
+        self._rng = random.Random(episode_seed)
+        self._sim = self._new_simulator(episode_seed)
+
+        # Warm up so episodes do not all start from the identical initial draw.
+        for _ in range(self._rng.randint(0, 30)):
+            self._sim.step()
 
         self._step_count = 0
-        self._sample_routing_task()
-        state = self._sim.get_state()
-        obs = _state_to_obs(state, self.n_links)
-        return obs, {"src": self._current_src, "dst": self._current_dst}
+        self._sample_task()
+        observation = self._observe(self._sim.get_state())
+        return observation, self._info()
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict]:
-        # Clamp action to valid path indices
         action = int(action) % max(1, len(self._current_paths))
 
-        # Compute reward BEFORE stepping the simulator
+        # 1. Score the decision against the state it was actually made in.
         state = self._sim.get_state()
-        reward = self._compute_reward(action, state)
+        chosen = self._current_paths[action] if self._current_paths else []
+        immediate = self._decision_reward(chosen, state)
 
-        # Advance simulator
+        # 2. Apply the decision to the network, then advance time. This is what
+        #    makes the global load term action-dependent rather than a constant
+        #    baseline: our own flow is part of what we are about to be judged on.
+        if chosen:
+            self._sim.register_flow(chosen)
         new_state = self._sim.step()
         self._step_count += 1
 
-        # Resample routing task each step (keeps exploration diverse)
-        self._sample_routing_task()
+        reward = immediate + self._global_reward(new_state)
 
-        obs = _state_to_obs(new_state, self.n_links)
+        # 3. Draw the *next* task, then build the observation for it. The
+        #    observation now carries the task, so obs_{t+1} fully describes the
+        #    decision problem the agent is about to face.
+        self._sample_task()
+        observation = self._observe(new_state)
+
         truncated = self._step_count >= self.episode_steps
-        terminated = False
-
-        info = {
-            "step": self._step_count,
-            "src": self._current_src,
-            "dst": self._current_dst,
-            "chosen_path": self._current_paths[action] if self._current_paths else [],
-            "reward": reward,
-        }
-        return obs, reward, terminated, truncated, info
+        info = self._info()
+        info["chosen_path"] = chosen
+        info["reward"] = reward
+        return observation, float(reward), False, truncated, info
 
     def render(self) -> None:
         if self.render_mode == "human":
             state = self._sim.get_state()
+            mean_util = float(np.mean([link.utilization for link in state.links]))
             print(
-                f"[Step {self._step_count}] {self._current_src} → {self._current_dst} "
-                f"| links={len(state.links)} "
-                f"| mean_util={np.mean([l.utilization for l in state.links]):.3f}"
+                f"[{self._step_count}] {self._current_src} -> {self._current_dst} "
+                f"({self._current_profile.traffic_class.value}) mean_util={mean_util:.3f}"
             )
 
     def close(self) -> None:
-        pass
+        return None
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
+    # -- internals --------------------------------------------------------
 
-    def _sample_routing_task(self) -> None:
-        """Pick a random (src, dst) pair and pre-compute candidate paths."""
-        nodes = self._nodes
+    def _sample_task(self) -> None:
+        """Draw a demand and a traffic class, and pre-compute the candidates."""
+        state = self._sim.get_state()
+        nodes = state.nodes
         src = self._rng.choice(nodes)
         dst = self._rng.choice([n for n in nodes if n != src])
+
         self._current_src = src
         self._current_dst = dst
-        self._current_paths = self._sim.get_candidate_paths(src, dst, k=self.k_paths)
-        # Ensure at least one dummy path so the agent always has a valid choice
-        if not self._current_paths:
-            self._current_paths = [[src, dst]]
+        self._current_profile = QOS_PROFILES[self._rng.choice(self.qos_classes)]
+        # Same generator, same ordering, same weighting as inference.
+        self._current_paths = candidate_paths(state, src, dst, k=self.k_paths)
 
-    def _compute_reward(self, action: int, state) -> float:
-        """
-        New reward function that GNN/RL can optimize but Dijkstra cannot:
-        - Penalizes path latency (same as before)
-        - Penalizes congestion on chosen path (same as before)
-        - NEW: Penalizes GLOBAL network load variance (load balancing)
-        - NEW: Penalizes the single most overloaded link in the network
-        These last two terms give RL a genuinely different objective from Dijkstra,
-        which only sees per-path cost and has no concept of global load distribution.
-        """
-        paths = self._current_paths
-        if not paths or action >= len(paths):
-            return -self.CONGESTION_PENALTY
+    def _observe(self, state) -> np.ndarray:
+        return build_observation(
+            state,
+            self.n_links,
+            self.n_nodes,
+            self._node_to_idx.get(self._current_src, 0),
+            self._node_to_idx.get(self._current_dst, 0),
+            self._current_paths,
+            self._current_profile,
+        )
 
-        path = paths[action]
-        link_lookup = {
-            frozenset((lnk.source, lnk.target)): lnk
-            for lnk in state.links
+    def _decision_reward(self, path: list[str], state) -> float:
+        """Negative class-weighted cost of the chosen path, plus a feasibility term."""
+        if not path:
+            return -W_QOS - W_INFEASIBLE
+
+        evaluation = evaluate_path(state, path, self._current_profile)
+        if evaluation.score == float("inf"):
+            return -W_QOS - W_INFEASIBLE
+
+        # qos scores are sums of normalised per-link terms; divide by a hop
+        # budget so the scale is comparable across path lengths.
+        normalised = min(1.0, evaluation.score / (MAX_LATENCY_MS / 20.0))
+        reward = -W_QOS * normalised
+        if not evaluation.feasible:
+            reward -= W_INFEASIBLE
+        return reward
+
+    @staticmethod
+    def _global_reward(state) -> float:
+        """Penalise a badly balanced network, measured *after* our flow landed."""
+        utils = [link.utilization for link in state.links]
+        if not utils:
+            return 0.0
+        variance = float(np.var(utils))
+        worst = float(max(utils))
+        penalty = W_GLOBAL_LOAD * variance
+        if worst > 0.8:
+            penalty += W_BOTTLENECK * (worst - 0.8)
+        return -penalty
+
+    def _info(self) -> dict[str, Any]:
+        return {
+            "step": self._step_count,
+            "src": self._current_src,
+            "dst": self._current_dst,
+            "traffic_class": self._current_profile.traffic_class.value,
+            "n_candidates": len(self._current_paths),
         }
 
-        path_links = []
-        for i in range(len(path) - 1):
-            key = frozenset((path[i], path[i + 1]))
-            if key in link_lookup:
-                path_links.append(link_lookup[key])
+    # -- helpers used by the evaluation baselines -------------------------
 
-        if not path_links:
-            return -self.CONGESTION_PENALTY
+    @property
+    def current_paths(self) -> list[list[str]]:
+        return list(self._current_paths)
 
-        # --- Original per-path terms ---
-        mean_util = float(np.mean([lnk.utilization for lnk in path_links]))
-        mean_loss = float(np.mean([lnk.packet_loss_rate for lnk in path_links]))
-        total_latency_raw = sum(
-            lnk.base_latency * (1 + 4 * lnk.utilization ** 2)
-            for lnk in path_links
-        )
-        norm_latency = float(np.clip(total_latency_raw / _MAX_LATENCY_MS, 0.0, 1.0))
-        norm_loss = float(np.clip(mean_loss / max(_MAX_LOSS, 1e-9), 0.0, 1.0))
+    @property
+    def current_profile(self):
+        return self._current_profile
 
-        reward = -(
-            self.W_LATENCY * norm_latency
-            + self.W_UTIL * mean_util
-            + self.W_LOSS * norm_loss
-        )
+    def oracle_action(self) -> int:
+        """Index of the candidate that maximises the immediate reward.
 
-        # Extra penalty for congested links on chosen path
-        congested = sum(1 for lnk in path_links if lnk.utilization > self.CONGESTION_THRESHOLD)
-        reward -= congested * self.CONGESTION_PENALTY * 0.1
+        This is the greedy ceiling used to normalise the PPO score. It is greedy,
+        not optimal: it ignores the downstream consequences of its own load, so a
+        policy that learns to plan ahead can in principle exceed it.
+        """
+        if not self._current_paths:
+            return 0
+        state = self._sim.get_state()
+        rewards = [self._decision_reward(p, state) for p in self._current_paths]
+        return int(np.argmax(rewards))
 
-        # --- NEW: Global load balancing terms ---
-        all_utils = [lnk.utilization for lnk in state.links]
 
-        # Penalize high VARIANCE across all links — Dijkstra ignores this entirely
-        # High variance means some links are overloaded while others are idle
-        util_variance = float(np.var(all_utils))
-        reward -= 0.4 * util_variance
-
-        # Penalize the single worst link in the network heavily
-        # Dijkstra may route through the cheapest path but inadvertently
-        # push one link to 95%+ utilization — RL learns to avoid this
-        max_util = float(max(all_utils))
-        if max_util > 0.8:
-            reward -= 0.5 * (max_util - 0.8)  # only penalize above 80% threshold
-
-        return float(reward)
+__all__ = ["EPISODE_STEPS", "NetworkRoutingEnv"]
