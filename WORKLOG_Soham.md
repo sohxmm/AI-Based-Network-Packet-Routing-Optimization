@@ -1,6 +1,6 @@
 # Internship Work Log
 
-Total hours: 140.5
+Total hours: 147
 
 ## 09/06/2026
 
@@ -431,3 +431,23 @@ Tasks:
 
 Status:
 - All four defects reproduced independently. Rebuild plan sequenced
+
+## 13/08/2026
+
+Hours: 6.5
+
+Tasks:
+- Restructured the repository into core / routing / ml / experiments / service / web, using `git mv` throughout so history is preserved
+- Removed all seven `sys.path.insert(...)` hacks; `pytest.ini` sets pythonpath and the Docker image sets PYTHONPATH
+- Built the domain core: `core/cost.py`, `core/models.py`, `core/paths.py`, `core/qos.py`, `core/simulator.py`, `core/sources.py`
+- The congestion cost formula existed at 14 sites across 11 files with three different exponents among them, which meant the RL agent trained against one cost and served against another. It now exists at exactly one site
+- Corrected two behaviours while consolidating rather than porting them faithfully: `path_cost` returns infinity for an invalid path (the old copies filtered out missing edges and under-reported the cost of a broken path), and `candidate_paths` is congestion-weighted by default, which fixes a train/serve skew hidden behind a boolean default
+- Closed the simulation loop: `register_flow()` means routing decisions now add load to the links they traverse
+- Hit a calibration bug worth recording. Adding the flow term as a shock outside the AR(1) update amplified it by 1/(1-a) at steady state, pinning mean utilization at 0.68 with p95 at 1.0 — everything saturated and the cost function degenerate again. Fixed by folding flow load into the offered-load baseline the process mean-reverts toward. Mean now sits at 0.39
+- Replaced the ring with a small-world topology: 100 nodes is now 200 edges, average degree 4, diameter 8
+- Replaced the random-walk utilization process with AR(1) around a per-link diurnal cycle, because the Bayes-optimal one-step predictor for a random walk is the identity function and the LSTM was being trained to learn f(x) = x
+- Added `core/qos.py` with five traffic classes carrying hard constraints, and `core/sources.py` so the same stack can be driven by the simulator, a recorded trace or live measurement
+- Removed roughly 350 duplicated lines: 6 copies of `_average_path_utilization`, 6 of `_failed_decision`, 4 of `_path_cost`, 3 byte-identical `_find_candidate_paths`, 2 dead `_build_adjacency`
+
+Status:
+- The definition of "good routing" now lives in one place, and the project's central question is answerable for the first time
