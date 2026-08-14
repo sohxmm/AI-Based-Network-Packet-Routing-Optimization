@@ -1,169 +1,107 @@
 /**
- * BenchmarkReport.test.jsx — Tests for the benchmark report view.
- *
- * Verifies:
- *  - Renders scenario selector
- *  - Renders metrics table with expected columns
- *  - Guardrail banners render for high fallback / degeneracy cases
+ * BenchmarkReport renders whatever the API returns, including the parts the
+ * project would rather not show. These tests pin the parts that matter:
+ * the guardrail warnings must appear above the table, and an empty results
+ * directory must say so plainly instead of rendering a blank panel.
  */
 
-import React from "react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
-import { BenchmarkResultView } from "../BenchmarkReport.jsx";
+import { describe, expect, it, vi } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
 
-// Mock Recharts
-vi.mock("recharts", () => ({
-  ResponsiveContainer: ({ children }) => <div data-testid="responsive-container">{children}</div>,
-  BarChart: ({ children }) => <div data-testid="bar-chart">{children}</div>,
-  Bar: () => <div data-testid="bar" />,
-  XAxis: () => null,
-  YAxis: () => null,
-  Tooltip: () => null,
-  Legend: () => null,
-}));
+import BenchmarkReport from "../BenchmarkReport.jsx";
 
-const mockScenarioData = {
-  scenario: "high_congestion",
-  n_steps: 1000,
-  m_pairs: 20,
+vi.mock("recharts", () => {
+  const Passthrough = ({ children }) => <div>{children}</div>;
+  return {
+    ResponsiveContainer: Passthrough,
+    BarChart: Passthrough,
+    Bar: Passthrough,
+    Cell: () => null,
+    XAxis: () => null,
+    YAxis: () => null,
+    CartesianGrid: () => null,
+    Tooltip: () => null,
+    LabelList: () => null,
+    ErrorBar: () => null,
+    ReferenceLine: () => null,
+  };
+});
+
+function mockFetch(payload) {
+  global.fetch = vi.fn(() =>
+    Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(payload) })
+  );
+}
+
+const SCENARIO = {
+  scenario: "normal_traffic",
+  description: "Baseline.",
+  topology: { num_nodes: 25, num_edges: 50, avg_degree: 4, diameter: 6 },
+  replication: { n_runs: 30, n_steps: 100, m_pairs: 20 },
+  warnings: ["rl: 100% of decisions came from the heuristic fallback, not a trained model."],
   algorithms: {
     dijkstra: {
-      mean_latency: 60.0,
-      p95_latency: 117.0,
-      util_variance: 0.035,
-      success_rate: 1.0,
-      fallback_rate: 0.0,
-      dijkstra_match_rate: 1.0,
-      wilcoxon_p_value: null,
-      effect_size_pct: 0.0,
+      mean_latency: 60.1,
+      success_rate: 1,
+      fallback_rate: 0,
+      qos_satisfaction_rate: 0.98,
+      diversity_index: 0.11,
+      p95_path_max_utilization: 0.62,
+      dijkstra_match_rate: 1,
+      mean_latency_ci: { ci95_low: 59, ci95_high: 61 },
     },
     rl: {
-      mean_latency: 83.7,
-      p95_latency: 183.8,
-      util_variance: 0.048,
-      success_rate: 1.0,
-      fallback_rate: 0.12, // High fallback — should trigger red banner
-      dijkstra_match_rate: 0.47,
-      wilcoxon_p_value: 0.0,
-      effect_size_pct: 39.5,
-    },
-    gnn: {
-      mean_latency: 61.0,
-      p95_latency: 120.0,
-      util_variance: 0.036,
-      success_rate: 1.0,
-      fallback_rate: 0.0,
-      dijkstra_match_rate: 0.95, // High Dijkstra match — should trigger yellow banner
-      wilcoxon_p_value: 0.001,
-      effect_size_pct: 1.7,
+      mean_latency: 63.4,
+      success_rate: 1,
+      fallback_rate: 1,
+      qos_satisfaction_rate: 0.95,
+      diversity_index: 0.2,
+      p95_path_max_utilization: 0.66,
+      dijkstra_match_rate: 0.4,
+      mean_latency_ci: { ci95_low: 62, ci95_high: 65 },
+      comparison_vs_dijkstra: {
+        n_runs: 30,
+        mean_diff: 3.3,
+        pct_diff: 5.5,
+        cliffs_delta: 0.31,
+        effect_magnitude: "small",
+        ci95_low: 2.1,
+        ci95_high: 4.5,
+        wilcoxon_p_value: 0.002,
+      },
     },
   },
 };
 
-describe("BenchmarkResultView", () => {
-  it("renders metrics table with algorithm rows", () => {
-    render(
-      <BenchmarkResultView
-        scenarioData={mockScenarioData}
-        scenarioLabel="High Congestion"
-      />
+describe("BenchmarkReport", () => {
+  it("surfaces guardrail warnings above the results", async () => {
+    mockFetch({ scenarios: { normal_traffic: SCENARIO }, known_limitations: {} });
+    render(<BenchmarkReport />);
+    await waitFor(() =>
+      expect(screen.getByText(/heuristic fallback, not a trained model/i)).toBeTruthy()
     );
-
-    // Check table headers exist
-    expect(screen.getByText("Algorithm")).toBeTruthy();
-    expect(screen.getByText("Mean Latency")).toBeTruthy();
-    expect(screen.getByText("p95 Latency")).toBeTruthy();
-    expect(screen.getByText("Util Var")).toBeTruthy();
-    expect(screen.getByText("Effect vs Dijkstra")).toBeTruthy();
-
-    // Check algorithm names appear (may appear multiple times due to summary card)
-    expect(screen.getAllByText("Dijkstra").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("RL").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("GNN").length).toBeGreaterThan(0);
   });
 
-  it("renders red fallback guardrail banner for high fallback rate", () => {
-    render(
-      <BenchmarkResultView
-        scenarioData={mockScenarioData}
-        scenarioLabel="High Congestion"
-      />
-    );
-
-    // RL has 12% fallback rate — should trigger a red banner mentioning it
-    const banners = document.querySelectorAll('[class*="red"]');
-    expect(banners.length).toBeGreaterThan(0);
-
-    // Check the text mentions RL and fallback
-    const bannerTexts = Array.from(banners).map((b) => b.textContent);
-    const hasRlFallback = bannerTexts.some(
-      (t) => t.includes("RL") && t.includes("fallback")
-    );
-    expect(hasRlFallback).toBe(true);
+  it("reports Cliff's delta rather than a percent difference labelled as effect size", async () => {
+    mockFetch({ scenarios: { normal_traffic: SCENARIO }, known_limitations: {} });
+    render(<BenchmarkReport />);
+    await waitFor(() => expect(screen.getByText("0.310")).toBeTruthy());
+    expect(screen.getByText("small")).toBeTruthy();
   });
 
-  it("renders yellow degeneracy banner for high Dijkstra match rate", () => {
-    render(
-      <BenchmarkResultView
-        scenarioData={mockScenarioData}
-        scenarioLabel="High Congestion"
-      />
+  it("states the unit of replication", async () => {
+    mockFetch({ scenarios: { normal_traffic: SCENARIO }, known_limitations: {} });
+    render(<BenchmarkReport />);
+    await waitFor(() =>
+      expect(screen.getByText(/30 independent seeded runs/i)).toBeTruthy()
     );
-
-    // GNN has 95% Dijkstra match — should trigger a yellow banner
-    const banners = document.querySelectorAll('[class*="amber"]');
-    const bannerTexts = Array.from(banners).map((b) => b.textContent);
-    const hasGnnDegen = bannerTexts.some(
-      (t) => t.includes("GNN") && t.includes("Dijkstra")
-    );
-    expect(hasGnnDegen).toBe(true);
   });
 
-  it("renders large topology limitation banner", () => {
-    const largeTopoData = {
-      ...mockScenarioData,
-      scenario: "large_topology_100_nodes",
-    };
-
-    render(
-      <BenchmarkResultView
-        scenarioData={largeTopoData}
-        scenarioLabel="Large Topology (100 Nodes)"
-      />
+  it("explains what to do when no results exist", async () => {
+    mockFetch({ scenarios: {}, known_limitations: {} });
+    render(<BenchmarkReport />);
+    await waitFor(() =>
+      expect(screen.getByText(/No benchmark results found/i)).toBeTruthy()
     );
-
-    expect(screen.getByText(/Large Topology Limitation/)).toBeTruthy();
-  });
-
-  it("renders grouped bar chart", () => {
-    render(
-      <BenchmarkResultView
-        scenarioData={mockScenarioData}
-        scenarioLabel="High Congestion"
-      />
-    );
-
-    expect(screen.getByText("Latency vs. Utilization Variance Trade-off")).toBeTruthy();
-    expect(screen.getByTestId("bar-chart")).toBeTruthy();
-  });
-
-  it("shows 'baseline' for Dijkstra effect size column", () => {
-    render(
-      <BenchmarkResultView
-        scenarioData={mockScenarioData}
-        scenarioLabel="High Congestion"
-      />
-    );
-
-    expect(screen.getByText("baseline")).toBeTruthy();
-  });
-
-  it("renders no data message when scenarioData is null", () => {
-    render(
-      <BenchmarkResultView scenarioData={null} scenarioLabel="Test" />
-    );
-
-    expect(screen.getByText(/No benchmark data available/)).toBeTruthy();
   });
 });

@@ -1,81 +1,102 @@
 import { useEffect, useRef } from "react";
 import * as d3 from "d3";
+
+import { algorithmColor } from "../utils/colorScales.js";
 import { utilizationColor } from "../utils/colorScales.js";
 
 /**
  * TopologyGraph
  *
- * Two-phase D3 rendering strategy to prevent the graph from "dancing"
- * on every WebSocket tick:
+ * Three-phase D3 rendering strategy, so the graph never "dances" on a tick:
  *
- * Phase 1 (structureEffect) — fires ONCE when the node list changes.
- *   Builds the force simulation, draws all <line> and <g> elements,
- *   and stores live refs to the D3 link/node selections.
+ * Phase 1 (structure) — fires ONCE when the node set changes.
+ *   Builds the force simulation, draws every <line> and <g>, and stores live
+ *   refs to the D3 selections.
  *
- * Phase 2 (colorEffect) — fires on EVERY networkState update.
- *   Only updates stroke color, stroke-width, and node fill via
- *   selection.attr() — no DOM teardown, no simulation restart.
- *   Uses a short CSS transition so color changes animate smoothly.
+ * Phase 2 (appearance) — fires on EVERY networkState update.
+ *   Updates only stroke, stroke-width and fill via selection.attr(). No DOM
+ *   teardown, no simulation restart, CSS transitions for smoothness.
+ *
+ * Phase 3 (overlays) — fires when the highlighted paths change.
+ *   Draws one polyline per algorithm, offset perpendicular to each segment so
+ *   that where several algorithms share an edge, all of them stay visible.
+ *   This is the view that makes the project's argument legible: same source,
+ *   same destination, same instant, different choices.
  */
-function TopologyGraph({ networkState, highlightedPath = [], isDark = true }) {
+function TopologyGraph({
+  networkState,
+  highlightedPaths = [],
+  isDark = true,
+  height = 460,
+}) {
   const svgRef = useRef(null);
 
-  // Stable refs to D3 selections so Phase 2 can reach them without
-  // triggering Phase 1.
   const linkBaseRef = useRef(null);
   const linkAnimRef = useRef(null);
   const nodeCircleRef = useRef(null);
-
-  // Stable ref to the frozen topology (node ids + static link list).
-  // We only rebuild the simulation when the node-id set actually changes.
+  const overlayRef = useRef(null);
+  const positionsRef = useRef(new Map());
   const topologyKeyRef = useRef("");
 
-  // ─── Phase 1: build simulation (topology changes only) ───────────────
+  // ─── Phase 1: build the simulation (topology changes only) ──────────────
   useEffect(() => {
     if (!networkState?.nodes?.length || !svgRef.current) return;
 
-    // Compute a stable key from sorted node ids
     const key = [...networkState.nodes].sort().join(",");
-    if (key === topologyKeyRef.current) return; // topology unchanged — skip
+    if (key === topologyKeyRef.current) return;
     topologyKeyRef.current = key;
 
     const width = 760;
-    const height = 360;
+    const canvasHeight = 400;
 
-    // Build node objects with stable positions seeded in a ring so the
-    // initial layout is already reasonable and settles quickly.
     const nodeCount = networkState.nodes.length;
     const simNodes = networkState.nodes.map((id, i) => ({
       id,
-      // Pre-position on a circle so the sim barely moves on startup
-      x: width / 2 + (width * 0.38) * Math.cos((2 * Math.PI * i) / nodeCount),
-      y: height / 2 + (height * 0.38) * Math.sin((2 * Math.PI * i) / nodeCount),
+      x: width / 2 + width * 0.38 * Math.cos((2 * Math.PI * i) / nodeCount),
+      y: canvasHeight / 2 + canvasHeight * 0.38 * Math.sin((2 * Math.PI * i) / nodeCount),
     }));
 
-    // Build link objects from the FIRST snapshot — structure won't change
     const simLinks = networkState.links.map((l) => ({
       source: l.source,
       target: l.target,
-      // Store the edge key for highlight lookup
       edgeKey: [l.source, l.target].sort().join("-"),
     }));
 
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove();
-    svg.attr("viewBox", `0 0 ${width} ${height}`);
+    svg.attr("viewBox", `0 0 ${width} ${canvasHeight}`);
+
+    // An arrowhead so an overlaid route reads as directional.
+    svg
+      .append("defs")
+      .append("marker")
+      .attr("id", "route-arrow")
+      .attr("viewBox", "0 0 10 10")
+      .attr("refX", 9)
+      .attr("refY", 5)
+      .attr("markerWidth", 5)
+      .attr("markerHeight", 5)
+      .attr("orient", "auto-start-reverse")
+      .append("path")
+      .attr("d", "M 0 0 L 10 5 L 0 10 z")
+      .attr("fill", "context-stroke");
+
+    // Denser graphs need weaker repulsion and shorter links, or 100 nodes
+    // explode off the canvas.
+    const linkDistance = nodeCount > 60 ? 42 : 92;
+    const charge = nodeCount > 60 ? -90 : -260;
 
     const simulation = d3
       .forceSimulation(simNodes)
-      .force("link", d3.forceLink(simLinks).id((n) => n.id).distance(92))
-      .force("charge", d3.forceManyBody().strength(-260))
-      .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collision", d3.forceCollide(26))
-      // Cool quickly — we don't want it bouncing during the demo
+      .force("link", d3.forceLink(simLinks).id((n) => n.id).distance(linkDistance))
+      .force("charge", d3.forceManyBody().strength(charge))
+      .force("center", d3.forceCenter(width / 2, canvasHeight / 2))
+      .force("collision", d3.forceCollide(nodeCount > 60 ? 12 : 26))
       .alphaDecay(0.05);
 
-    // ── Draw links (Base) ───────────────────────────────────────────────
-    const linkBaseG = svg.append("g").attr("class", "links-base");
-    const linkBaseSel = linkBaseG
+    const linkBaseSel = svg
+      .append("g")
+      .attr("class", "links-base")
       .selectAll("line")
       .data(simLinks, (d) => d.edgeKey)
       .join("line")
@@ -86,9 +107,9 @@ function TopologyGraph({ networkState, highlightedPath = [], isDark = true }) {
 
     linkBaseSel.append("title").text((d) => d.edgeKey);
 
-    // ── Draw links (Animated Packets) ───────────────────────────────────
-    const linkAnimG = svg.append("g").attr("class", "links-anim");
-    const linkAnimSel = linkAnimG
+    const linkAnimSel = svg
+      .append("g")
+      .attr("class", "links-anim")
       .selectAll("line")
       .data(simLinks, (d) => d.edgeKey)
       .join("line")
@@ -97,9 +118,14 @@ function TopologyGraph({ networkState, highlightedPath = [], isDark = true }) {
       .style("pointer-events", "none")
       .style("opacity", 0);
 
-    // ── Draw nodes ──────────────────────────────────────────────────────
-    const nodeG = svg.append("g").attr("class", "nodes");
-    const nodeSel = nodeG
+    // Overlays sit above the links but below the nodes.
+    const overlayG = svg.append("g").attr("class", "path-overlays");
+    overlayRef.current = overlayG;
+
+    const nodeRadius = nodeCount > 60 ? 7 : 15;
+    const nodeSel = svg
+      .append("g")
+      .attr("class", "nodes")
       .selectAll("g")
       .data(simNodes, (d) => d.id)
       .join("g")
@@ -115,32 +141,33 @@ function TopologyGraph({ networkState, highlightedPath = [], isDark = true }) {
             d.fx = event.x;
             d.fy = event.y;
           })
-          .on("end", (event, d) => {
+          .on("end", (event) => {
+            // fx/fy are left set on purpose: a node the user positioned should
+            // stay where they put it rather than drifting back on the next tick.
             if (!event.active) simulation.alphaTarget(0);
-            // Pin the node in place after drag — stops it from drifting
-            // back when new ticks fire.
-            // Leave fx/fy set so the node stays where the user put it.
           })
       );
 
     const circlesSel = nodeSel
       .append("circle")
-      .attr("r", 15)
+      .attr("r", nodeRadius)
       .attr("fill", "var(--color-accent)")
       .attr("stroke-width", 1.5)
       .style("transition", "fill 0.6s ease, stroke 0.6s ease");
 
-    nodeSel
-      .append("text")
-      .attr("dy", 4)
-      .attr("text-anchor", "middle")
-      .attr("font-size", 10)
-      .attr("font-weight", 700)
-      .attr("fill", "var(--color-accent-text)")
-      .attr("pointer-events", "none")
-      .text((d) => d.id);
+    if (nodeCount <= 60) {
+      nodeSel
+        .append("text")
+        .attr("dy", 4)
+        .attr("text-anchor", "middle")
+        .attr("font-size", 10)
+        .attr("font-weight", 700)
+        .attr("fill", "var(--color-accent-text)")
+        .attr("pointer-events", "none")
+        .text((d) => d.id);
+    }
+    nodeSel.append("title").text((d) => d.id);
 
-    // ── Tick handler: only update geometry (x/y), not colors ───────────
     simulation.on("tick", () => {
       linkBaseSel
         .attr("x1", (d) => d.source.x)
@@ -155,23 +182,28 @@ function TopologyGraph({ networkState, highlightedPath = [], isDark = true }) {
         .attr("y2", (d) => d.target.y);
 
       nodeSel.attr("transform", (d) => `translate(${d.x},${d.y})`);
+
+      const positions = new Map();
+      simNodes.forEach((n) => positions.set(n.id, { x: n.x, y: n.y }));
+      positionsRef.current = positions;
     });
 
-    // Store selections in refs so Phase 2 can reach them
+    // Redraw overlays once the layout has settled, so the first render of a
+    // comparison is not drawn against pre-simulation coordinates.
+    simulation.on("end", () => drawOverlays());
+
     linkBaseRef.current = linkBaseSel;
     linkAnimRef.current = linkAnimSel;
     nodeCircleRef.current = circlesSel;
 
     return () => simulation.stop();
-    // Only depends on the node-id list — NOT on the full networkState
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [networkState?.nodes?.join(",")]);
 
-  // ─── Phase 2: update colors only (every WebSocket tick) ──────────────
+  // ─── Phase 2: appearance only (every tick) ──────────────────────────────
   useEffect(() => {
-    if (!networkState?.links || !linkBaseRef.current || !nodeCircleRef.current || !linkAnimRef.current) return;
+    if (!networkState?.links || !linkBaseRef.current || !nodeCircleRef.current) return;
 
-    // Build a fast lookup: "R1-R2" → utilization
     const utilMap = new Map(
       networkState.links.map((l) => [
         [l.source, l.target].sort().join("-"),
@@ -179,103 +211,163 @@ function TopologyGraph({ networkState, highlightedPath = [], isDark = true }) {
       ])
     );
 
-    // Build a fast lookup: "R1-R2" → is highlighted
-    const highlightedEdges = new Set(
-      highlightedPath
-        .slice(0, -1)
-        .map((node, i) => [node, highlightedPath[i + 1]].sort().join("-"))
-    );
+    const failedColor = isDark ? "rgba(239, 68, 68, 0.45)" : "rgba(239, 68, 68, 0.65)";
 
-    // Update base link stroke + width
     linkBaseRef.current
-      .attr("stroke", (d) => {
-        if (!utilMap.has(d.edgeKey)) return isDark ? "rgba(239, 68, 68, 0.4)" : "rgba(239, 68, 68, 0.6)";
-        if (highlightedEdges.has(d.edgeKey)) return isDark ? "rgba(103, 232, 249, 0.4)" : "rgba(6, 182, 212, 0.4)";
-        const util = utilMap.get(d.edgeKey);
-        return utilizationColor(util);
-      })
-      .attr("stroke-width", (d) => {
-        if (!utilMap.has(d.edgeKey)) return 2;
-        if (highlightedEdges.has(d.edgeKey)) return 5;
-        const util = utilMap.get(d.edgeKey);
-        return 1.5 + util * 3;
-      })
-      .attr("stroke-dasharray", (d) => {
-        if (!utilMap.has(d.edgeKey)) return "4, 4";
-        return "none";
-      });
+      .attr("stroke", (d) =>
+        utilMap.has(d.edgeKey) ? utilizationColor(utilMap.get(d.edgeKey)) : failedColor
+      )
+      .attr("stroke-width", (d) =>
+        utilMap.has(d.edgeKey) ? 1.5 + utilMap.get(d.edgeKey) * 3 : 2
+      )
+      .attr("stroke-dasharray", (d) => (utilMap.has(d.edgeKey) ? "none" : "4, 4"));
 
-    // Update animated packet layer
-    linkAnimRef.current
-      .attr("stroke", (d) => {
-        if (!utilMap.has(d.edgeKey)) return "none";
-        if (highlightedEdges.has(d.edgeKey)) return isDark ? "#67e8f9" : "#06b6d4";
-        const util = utilMap.get(d.edgeKey) ?? 0;
-        return util > 0.8 ? "#ef4444" : isDark ? "#e2e8f0" : "#475569";
-      })
-      .attr("stroke-width", (d) => {
-        if (highlightedEdges.has(d.edgeKey)) return 3;
-        const util = utilMap.get(d.edgeKey) ?? 0;
-        return 1.5 + util * 2;
-      })
-      .style("opacity", (d) => {
-        if (!utilMap.has(d.edgeKey)) return 0;
-        if (highlightedEdges.has(d.edgeKey)) return 1;
-        const util = utilMap.get(d.edgeKey) ?? 0;
-        return util > 0 ? Math.min(1, util + 0.3) : 0;
-      })
-      .style("animation-duration", (d) => {
-        const util = utilMap.get(d.edgeKey) ?? 0;
-        return `${Math.max(0.5, 2 - util * 1.5)}s`;
-      });
-
-    // Update link tooltip text
     linkBaseRef.current.select("title").text((d) => {
       if (!utilMap.has(d.edgeKey)) return `${d.edgeKey}: FAILED`;
-      const util = utilMap.get(d.edgeKey);
-      return `${d.edgeKey}: ${Math.round(util * 100)}% utilized`;
+      return `${d.edgeKey}: ${Math.round(utilMap.get(d.edgeKey) * 100)}% utilized`;
     });
 
-    // Update node fill and congestion pulsing
-    nodeCircleRef.current
-      .attr("fill", (d) => {
-        const isCongested = networkState.links.some(
-          (l) => l.utilization > 0.8 && (l.source === d.id || l.target === d.id)
-        );
-        return isCongested ? "#ef4444" : "var(--color-accent)";
-      })
-      .attr("class", (d) => {
-        const isCongested = networkState.links.some(
-          (l) => l.utilization > 0.8 && (l.source === d.id || l.target === d.id)
-        );
-        return isCongested ? "animate-congestion" : "";
-      });
-  }, [networkState, highlightedPath, isDark]);
+    if (linkAnimRef.current) {
+      linkAnimRef.current
+        .attr("stroke", (d) => {
+          if (!utilMap.has(d.edgeKey)) return "none";
+          const util = utilMap.get(d.edgeKey) ?? 0;
+          return util > 0.8 ? "#ef4444" : isDark ? "#e2e8f0" : "#475569";
+        })
+        .attr("stroke-width", (d) => 1.5 + (utilMap.get(d.edgeKey) ?? 0) * 2)
+        .style("opacity", (d) => {
+          if (!utilMap.has(d.edgeKey)) return 0;
+          const util = utilMap.get(d.edgeKey) ?? 0;
+          return util > 0 ? Math.min(0.9, util + 0.25) : 0;
+        })
+        .style("animation-duration", (d) => {
+          const util = utilMap.get(d.edgeKey) ?? 0;
+          return `${Math.max(0.5, 2 - util * 1.5)}s`;
+        });
+    }
 
-  // ─── Phase 3: Update theme colors ──────────────
+    const congested = new Set();
+    networkState.links.forEach((l) => {
+      if (l.utilization > 0.8) {
+        congested.add(l.source);
+        congested.add(l.target);
+      }
+    });
+
+    nodeCircleRef.current
+      .attr("fill", (d) => (congested.has(d.id) ? "#ef4444" : "var(--color-accent)"))
+      .attr("stroke", "var(--color-border)")
+      .attr("class", (d) => (congested.has(d.id) ? "animate-congestion" : ""));
+  }, [networkState, isDark]);
+
+  // ─── Phase 3: path overlays ─────────────────────────────────────────────
+  function drawOverlays() {
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+
+    overlay.selectAll("*").remove();
+    const positions = positionsRef.current;
+    if (!positions.size || !highlightedPaths.length) return;
+
+    const OFFSET_STEP = 3.5;
+    const count = highlightedPaths.length;
+
+    highlightedPaths.forEach((entry, index) => {
+      const path = entry?.path ?? [];
+      if (path.length < 2) return;
+
+      // Fan the routes apart so overlapping segments stay individually visible.
+      const offset = (index - (count - 1) / 2) * OFFSET_STEP;
+      const points = [];
+
+      for (let i = 0; i < path.length - 1; i += 1) {
+        const a = positions.get(path[i]);
+        const b = positions.get(path[i + 1]);
+        if (!a || !b) return;
+
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const length = Math.hypot(dx, dy) || 1;
+        // Unit normal to this segment, used to translate the drawn line.
+        const nx = -dy / length;
+        const ny = dx / length;
+
+        if (i === 0) points.push([a.x + nx * offset, a.y + ny * offset]);
+        points.push([b.x + nx * offset, b.y + ny * offset]);
+      }
+
+      overlay
+        .append("path")
+        .attr("d", d3.line()(points))
+        .attr("fill", "none")
+        .attr("stroke", algorithmColor(entry.algorithm))
+        .attr("stroke-width", 4)
+        .attr("stroke-linecap", "round")
+        .attr("stroke-linejoin", "round")
+        .attr("stroke-opacity", 0.9)
+        // A dashed route is a fallback route: the model did not run.
+        .attr("stroke-dasharray", entry.is_fallback ? "6,4" : null)
+        .attr("marker-end", "url(#route-arrow)")
+        .append("title")
+        .text(
+          `${entry.algorithm}: ${path.join(" → ")}` +
+            (entry.total_latency != null
+              ? ` (${entry.total_latency.toFixed(1)} ms)`
+              : "")
+        );
+    });
+  }
+
   useEffect(() => {
-    if (!svgRef.current) return;
-    const svg = d3.select(svgRef.current);
-    // Unhighlighted links might need updating but they're mostly colored by utilizationColor which we can assume handles it.
-    // We just update the node strokes here.
-    svg.selectAll(".nodes circle").attr("stroke", isDark ? "var(--color-border)" : "var(--color-border)");
-  }, [isDark, networkState?.nodes]);
+    drawOverlays();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightedPaths, networkState?.step_count]);
 
   return (
-    <section className="h-full rounded border border-app-border bg-app-panel p-4 flex flex-col">
-      <div className="flex items-center justify-between gap-3 shrink-0">
-        <h2 className="text-sm font-semibold text-app-text">Topology Graph</h2>
-        <span className="text-xs text-app-muted">Drag nodes to reposition • animations live</span>
+    <section className="flex h-full flex-col rounded border border-app-border bg-app-panel p-4">
+      <div className="flex shrink-0 items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold text-app-text">Topology</h2>
+        <span className="text-xs text-app-muted">
+          Drag to reposition · thickness and colour show live utilization
+        </span>
       </div>
+
       {networkState?.nodes?.length ? (
         <svg
           ref={svgRef}
-          className="mt-4 flex-1 w-full rounded border border-app-border bg-app-input-bg min-h-[460px]"
+          role="img"
+          aria-label="Network topology graph"
+          className="mt-3 w-full flex-1 rounded border border-app-border bg-app-input-bg"
+          style={{ minHeight: height }}
         />
       ) : (
-        <div className="mt-4 flex flex-1 items-center justify-center rounded border border-dashed border-app-border text-sm text-app-muted min-h-[460px]">
-          Waiting for network state
+        <div
+          className="mt-3 flex flex-1 items-center justify-center rounded border border-dashed border-app-border text-sm text-app-muted"
+          style={{ minHeight: height }}
+        >
+          Waiting for network state…
         </div>
+      )}
+
+      {highlightedPaths.length > 0 && (
+        <ul className="mt-2 flex shrink-0 flex-wrap gap-x-4 gap-y-1 text-xs">
+          {highlightedPaths.map((entry) => (
+            <li key={entry.algorithm} className="flex items-center gap-1.5">
+              <span
+                className="inline-block h-0.5 w-5 rounded"
+                style={{
+                  backgroundColor: algorithmColor(entry.algorithm),
+                  opacity: entry.is_fallback ? 0.6 : 1,
+                }}
+                aria-hidden="true"
+              />
+              <span className="text-app-muted">
+                {entry.algorithm}
+                {entry.is_fallback && " (fallback)"}
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
     </section>
   );

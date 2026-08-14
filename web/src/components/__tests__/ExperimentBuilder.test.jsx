@@ -8,7 +8,6 @@
  *  - Algorithm checkboxes toggle correctly
  */
 
-import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import ExperimentBuilder from "../ExperimentBuilder.jsx";
@@ -53,11 +52,14 @@ describe("ExperimentBuilder form", () => {
   it("renders algorithm checkboxes", () => {
     render(<ExperimentBuilder />);
 
+    // Labels come from the shared registry, so the sandbox cannot drift out of
+    // step with the algorithms the backend actually supports.
     expect(screen.getByText("Dijkstra")).toBeTruthy();
-    expect(screen.getByText("ACO")).toBeTruthy();
+    expect(screen.getByText("Ant Colony")).toBeTruthy();
     expect(screen.getByText("GNN")).toBeTruthy();
-    expect(screen.getByText("RL")).toBeTruthy();
-    expect(screen.getByText("MARL")).toBeTruthy();
+    expect(screen.getByText("RL (PPO)")).toBeTruthy();
+    expect(screen.getByText("Multi-Agent RL")).toBeTruthy();
+    expect(screen.getByText("Random baseline")).toBeTruthy();
   });
 
   it("shows estimated duration", () => {
@@ -77,11 +79,8 @@ describe("ExperimentBuilder form", () => {
     const pairsInput = screen.getByLabelText(/Pairs\/step/);
     fireEvent.change(pairsInput, { target: { value: "10" } });
 
-    // At 300 × 10 = 3000, should be fine, check submit is NOT disabled
-    const submitButton = screen.getByRole("button", { name: /Run Experiment/i });
-    // 3000 is exactly at cap, should be enabled
-    // We can't easily test disabled state precisely here due to timing,
-    // but the total decisions    // It should now show the hard cap text
+    // The cap is enforced server-side by rejection rather than clamping, and
+    // the form mirrors that: it reports the total so the user can see why.
     expect(screen.getByText(/Total decisions/)).toBeTruthy();
   });
 

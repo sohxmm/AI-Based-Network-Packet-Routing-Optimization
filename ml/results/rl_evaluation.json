@@ -1,51 +1,51 @@
 {
-  "n_episodes": 3,
+  "n_episodes": 20,
   "seed": 1041,
   "policies": {
     "random": {
       "name": "random",
-      "mean": -47.2315058685297,
-      "std": 2.1232546152890324,
-      "ci95_low": -49.63419465097237,
-      "ci95_high": -44.828817086087035,
-      "n_episodes": 3
+      "mean": -48.01467650296731,
+      "std": 3.1713965503694186,
+      "ci95_low": -49.40460232393325,
+      "ci95_high": -46.62475068200138,
+      "n_episodes": 20
     },
     "greedy_first_candidate": {
       "name": "greedy_first_candidate",
-      "mean": -34.105221353332546,
-      "std": 1.9733601527707274,
-      "ci95_low": -36.33828858353666,
-      "ci95_high": -31.872154123128436,
-      "n_episodes": 3
+      "mean": -34.66173080639015,
+      "std": 3.0823215495176575,
+      "ci95_low": -36.01261778698401,
+      "ci95_high": -33.3108438257963,
+      "n_episodes": 20
     },
     "oracle": {
       "name": "oracle",
-      "mean": -33.099438093184695,
-      "std": 2.1628010646061706,
-      "ci95_low": -35.5468778958185,
-      "ci95_high": -30.65199829055089,
-      "n_episodes": 3
+      "mean": -33.23067264608821,
+      "std": 2.4212012892465484,
+      "ci95_low": -34.29181089740143,
+      "ci95_high": -32.169534394774985,
+      "n_episodes": 20
     },
     "ppo": {
       "name": "ppo",
-      "mean": -34.105221353332546,
-      "std": 1.9733601527707274,
-      "ci95_low": -36.33828858353666,
-      "ci95_high": -31.872154123128436,
-      "n_episodes": 3
+      "mean": -35.20451651098687,
+      "std": 2.728411017878243,
+      "ci95_low": -36.40029536226776,
+      "ci95_high": -34.00873765970598,
+      "n_episodes": 20
     }
   },
   "normalized_scores": {
     "random": 0.0,
-    "greedy_first_candidate": 0.9288297171980343,
+    "greedy_first_candidate": 0.9032022600808466,
     "oracle": 1.0,
-    "ppo": 0.9288297171980343
+    "ppo": 0.8664878686445812
   },
   "interpretation": "normalized = (policy - random) / (oracle - random). 0.0 means no better than random; 1.0 means it matches the greedy oracle.",
   "training": {
-    "timesteps": 4096,
+    "timesteps": 250000,
     "seed": 42,
-    "train_seconds": 14.6,
+    "train_seconds": 959.9,
     "obs_dim": 286,
     "num_nodes": 25
   }

@@ -1,6 +1,6 @@
 # Internship Work Log
 
-Total hours: 169
+Total hours: 175.5
 
 ## 09/06/2026
 
@@ -521,3 +521,22 @@ Tasks:
 
 Status:
 - A dead background loop is now externally detectable instead of hiding behind a green check
+
+## 20/08/2026
+
+Hours: 6.5
+
+Tasks:
+- Reworked the dashboard
+- Added the missing ESLint config. `npm run lint` had never been able to run: four eslint plugins were installed and no configuration file existed anywhere in the repo. It now exits 0 at `--max-warnings 0`
+- Added a shared `extractApiError`; structured backend errors were rendering as "[object Object]" and a non-JSON 502 from nginx threw a parse error over the real problem
+- Added an `isStale` watchdog to the WebSocket hook, because a backend whose simulator loop has died looks identical to an idle one from the client's side
+- Removed the hardcoded `http://localhost:8000`, which meant any non-localhost deployment required a source edit
+- Memoized the tick-driven panels and split `BenchmarkResultView` from 543 lines to 90
+- Built the path divergence view: every algorithm's route overlaid on one topology, perpendicular-offset so shared edges stay visible, fallback routes dashed, with a per-hop cost breakdown so the total is auditable rather than asserted
+- Added a model status banner and a warnings callout, so a user reading results always knows whether a model was behind them
+- Replaced the chart palette after checking it: the original 8 series colours failed colour-vision separation, with a worst adjacent pair at delta-E 3.0, and one read as grey
+- Cut the theme engine from ten themes to four. Ten cost about what fixing the model-loading bug cost, and the project needed the second one more
+
+Status:
+- The dashboard now shows the argument, not just the network
