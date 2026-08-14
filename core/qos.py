@@ -289,4 +289,28 @@ def _product(values) -> float:
     return total
 
 
+#: Width of the vector returned by :func:`profile_vector`.
+PROFILE_VECTOR_DIM = 6
+
+
+def profile_vector(profile: QoSProfile) -> list[float]:
+    """Encode a profile as a fixed-width vector in [0, 1].
+
+    This is what lets a *single* learned model serve all five traffic classes:
+    the class is an input, not a separate model. Unconstrained axes are encoded
+    as 1.0, meaning "no limit", which is the correct saturating value for a
+    constraint expressed as an upper bound.
+    """
+    return [
+        profile.w_latency,
+        profile.w_loss,
+        profile.w_utilization,
+        1.0 if profile.max_path_loss is None else min(1.0, profile.max_path_loss / 0.05),
+        1.0
+        if profile.max_bottleneck_utilization is None
+        else profile.max_bottleneck_utilization,
+        1.0 if profile.max_hops is None else min(1.0, profile.max_hops / 10.0),
+    ]
+
+
 ALL_CLASSES: list[TrafficClass] = list(QOS_PROFILES.keys())

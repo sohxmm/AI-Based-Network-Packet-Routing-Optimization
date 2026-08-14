@@ -1,276 +1,235 @@
-"""RLRouter – wraps a trained Stable-Baselines3 PPO model for inference.
+"""RLRouter — inference wrapper around the trained PPO routing policy.
 
-At startup the router tries to load backend/ml/models/rl_router_final.zip.
-If the file is absent (model not yet trained), it falls back to the
-congestion-aware Dijkstra heuristic so the API never fails cold.
+This is the router the model-path bug lived in. The loader looked for
+``rl_router_final.zip``; training saved, and the repository shipped,
+``ppo_routing_agent.zip``. The resulting ``FileNotFoundError`` was caught by
+``except (FileNotFoundError, ImportError, Exception): return False`` with no
+logging, so the "RL router" quietly served a congestion-weighted heuristic —
+effectively Dijkstra — for the entire life of the project.
+
+Three things prevent a recurrence:
+
+* the path comes from :mod:`ml.model_registry`, which training also reads, so
+  the two cannot diverge;
+* every failure branch logs, at a level chosen by how surprising it is;
+* the observation is built by :func:`ml.features.build_observation`, the same
+  function the training environment calls, so train/serve parity is structural
+  rather than something two files have to agree about by hand.
 """
 
 from __future__ import annotations
 
-import random
-import sys
+import logging
 from pathlib import Path
 from typing import Any
 
-# Ensure backend root is on sys.path when this module is imported from the
-# router package without the broader package context being set up.
-_BACKEND_ROOT = Path(__file__).resolve().parents[1]
-if str(_BACKEND_ROOT) not in sys.path:
-    sys.path.insert(0, str(_BACKEND_ROOT))
+from core.models import NetworkState, RoutingDecision
+from core.paths import build_decision, candidate_paths, failed_decision, path_cost
+from core.qos import QoSProfile, evaluate_path
+from ml.model_registry import path_for
+from routing.base import Router
 
-from simulator.data_models import NetworkState, RoutingDecision
+logger = logging.getLogger(__name__)
 
-_DEFAULT_MODEL_PATH = (
-    Path(__file__).resolve().parents[1] / "ml" / "models" / "rl_router_final"
-)
-
-# ---------------------------------------------------------------------------
-# Lazy imports – torch / SB3 are only needed when the PPO model is loaded
-# ---------------------------------------------------------------------------
 _ppo_class: Any = None
-_numpy: Any = None
+_build_observation: Any = None
 
 
-def _try_import_ppo():
-    global _ppo_class, _numpy
+def _try_import_ppo() -> bool:
+    """Import Stable-Baselines3 lazily; the API must start without it."""
+    global _ppo_class, _build_observation
     if _ppo_class is not None:
         return True
     try:
-        from stable_baselines3 import PPO  # noqa: PLC0415
-        import numpy as np  # noqa: PLC0415
+        from stable_baselines3 import PPO
+
+        from ml.features import build_observation
 
         _ppo_class = PPO
-        _numpy = np
+        _build_observation = build_observation
         return True
     except ImportError:
         return False
 
 
-# ---------------------------------------------------------------------------
-# Observation builder (must match ml/rl_environment.py exactly)
-# ---------------------------------------------------------------------------
-_MAX_QUEUE = 100.0
-_MAX_LOSS = 0.06
-_MAX_BASE_LATENCY = 25.0
+class RLRouter(Router):
+    """Route packets with a trained PPO policy, falling back to a heuristic."""
 
-
-def _state_to_obs(state: NetworkState, n_links: int):
-    """Build the same flat observation vector used during training."""
-    import numpy as np  # noqa: PLC0415
-
-    obs = np.zeros(n_links * 4, dtype=np.float32)
-    for i, link in enumerate(state.links[:n_links]):
-        base = i * 4
-        obs[base + 0] = float(max(0.0, min(1.0, link.utilization)))
-        obs[base + 1] = float(max(0.0, min(1.0, link.queue_size / _MAX_QUEUE)))
-        obs[base + 2] = float(
-            max(0.0, min(1.0, link.packet_loss_rate / max(_MAX_LOSS, 1e-9)))
-        )
-        obs[base + 3] = float(
-            max(0.0, min(1.0, link.base_latency / _MAX_BASE_LATENCY))
-        )
-    return obs
-
-
-# ---------------------------------------------------------------------------
-# RLRouter
-# ---------------------------------------------------------------------------
-class RLRouter:
-    """Route packets using a trained PPO policy, with a heuristic fallback.
-
-    Typical usage
-    -------------
-    >>> router = RLRouter()
-    >>> router.load_model()           # auto-discovers the default model path
-    >>> decision = router.predict(state, "R1", "R5")
-    """
+    name = "rl"
+    label = "Reinforcement Learning (PPO)"
+    description = (
+        "PPO policy that picks among k candidate paths. Its observation "
+        "encodes the link state, the source/destination pair, per-candidate "
+        "features and the QoS class."
+    )
 
     def __init__(self, seed: int = 42, k_paths: int = 5) -> None:
         self._seed = seed
         self._k_paths = k_paths
         self._model: Any = None
-        self._n_links: int | None = None
         self._model_path: Path | None = None
-        self._random = random.Random(seed)
+        self._n_links: int | None = None
+        self._n_nodes: int | None = None
         self.last_used_model: bool = False
 
-    # ------------------------------------------------------------------ #
-    # Model management                                                    #
-    # ------------------------------------------------------------------ #
+    # -- model management -------------------------------------------------
 
     def load_model(self, path: str | Path | None = None) -> None:
-        """Load the PPO model from *path* (defaults to the standard location).
-
-        Raises
-        ------
-        FileNotFoundError
-            If neither the .zip file nor a bare directory is found.
-        """
-        candidate = Path(path) if path else _DEFAULT_MODEL_PATH
-        # SB3 saves as <name>.zip; accept both forms
-        zip_path = candidate.with_suffix(".zip") if candidate.suffix != ".zip" else candidate
+        """Load the PPO policy, raising on failure."""
+        candidate = Path(path) if path else path_for("rl")
+        zip_path = (
+            candidate if candidate.suffix == ".zip" else candidate.with_suffix(".zip")
+        )
 
         if not zip_path.exists() and not candidate.exists():
             raise FileNotFoundError(
-                f"PPO model not found at {zip_path} or {candidate}.\n"
-                "Run `python -m ml.train_rl` from the backend/ directory to train."
+                f"PPO model not found at {zip_path}. "
+                "Train it with: python -m ml.training.train_rl"
             )
-
         if not _try_import_ppo():
-            raise ImportError(
-                "stable-baselines3 is required to load the RL model. "
-                "Install it with: pip install stable-baselines3"
-            )
+            raise ImportError("stable-baselines3 is required to load the RL model.")
 
-        actual_path = zip_path if zip_path.exists() else candidate
-        self._model = _ppo_class.load(str(actual_path))
-        self._model_path = actual_path
+        actual = zip_path if zip_path.exists() else candidate
+        self._model = _ppo_class.load(str(actual), device="cpu")
+        self._model_path = actual
 
-        # Infer n_links from the policy input dimension (obs_dim = n_links * 4)
-        obs_dim: int = self._model.observation_space.shape[0]
-        self._n_links = obs_dim // 4
-        print(
-            f"[RLRouter] Loaded PPO model from {actual_path} "
-            f"(n_links={self._n_links})"
+        # The observation layout is recorded at save time so the router never
+        # has to re-derive it by dividing the observation width, which is how
+        # the old n_links inference silently broke on a different topology.
+        metadata = getattr(self._model, "custom_data", None) or {}
+        self._n_links = metadata.get("n_links")
+        self._n_nodes = metadata.get("n_nodes")
+        logger.info(
+            "RLRouter loaded %s (obs_dim=%d)",
+            actual.name,
+            self._model.observation_space.shape[0],
         )
 
     def try_load_model(self, path: str | Path | None = None) -> bool:
-        """Attempt to load the model, returning False instead of raising."""
+        """Load the model, reporting failure loudly instead of swallowing it."""
         try:
             self.load_model(path)
             return True
-        except (FileNotFoundError, ImportError, Exception):
+        except FileNotFoundError as exc:
+            logger.warning(
+                "RLRouter: no trained model (%s). Falling back to the "
+                "congestion-aware heuristic. Train with: python -m ml.training.train_rl",
+                exc,
+            )
+            return False
+        except ImportError as exc:
+            logger.warning("RLRouter: ML dependencies unavailable (%s).", exc)
+            return False
+        except Exception:
+            logger.exception("RLRouter: unexpected error loading the model.")
             return False
 
     @property
     def is_trained(self) -> bool:
-        """Return True if a PPO model is loaded and ready for inference."""
         return self._model is not None
 
-    # ------------------------------------------------------------------ #
-    # Inference                                                           #
-    # ------------------------------------------------------------------ #
+    @property
+    def requires_model(self) -> bool:
+        return True
 
-    def predict(self, state: NetworkState, src: str, dst: str) -> RoutingDecision:
-        """Return the best routing decision for the given (src, dst) pair.
+    def status(self) -> dict[str, object]:
+        return {
+            "name": self.name,
+            "is_trained": self.is_trained,
+            "requires_model": True,
+            "model_path": str(self._model_path) if self._model_path else None,
+            "last_used_model": self.last_used_model,
+        }
 
-        If the PPO model is loaded, it ranks the *k* candidate paths by
-        inferring the policy's action from the current observation and
-        maps the discrete action index back to a concrete node-sequence path.
+    # -- inference --------------------------------------------------------
 
-        Falls back to the congestion-aware heuristic when the model is
-        absent or if no path exists between src and dst.
-        """
+    def find_route(
+        self,
+        state: NetworkState,
+        src: str,
+        dst: str,
+        profile: QoSProfile | None = None,
+    ) -> RoutingDecision:
+        profile = self.resolve_profile(profile)
+
         if src not in state.nodes or dst not in state.nodes:
-            return self._failed_decision(src, dst)
+            return failed_decision(src, dst, self.name)
 
-        candidate_paths = _find_candidate_paths(state, src, dst, limit=self._k_paths)
-        if not candidate_paths:
-            return self._failed_decision(src, dst)
+        paths = candidate_paths(state, src, dst, k=self._k_paths)
+        if not paths:
+            return failed_decision(src, dst, self.name)
 
-        is_fallback = False
-        if self._model is not None and self._n_links is not None:
-            path = self._ppo_select_path(state, candidate_paths)
+        if self._model is not None and self._observation_fits(state):
+            path = self._policy_select(state, src, dst, paths, profile)
             self.last_used_model = True
-            print("[RLRouter] Using trained PPO model")
+            is_fallback = False
         else:
-            # Heuristic fallback: pick path with lowest congestion-adjusted cost
-            path = min(candidate_paths, key=lambda p: _path_cost(state, p))
+            path = min(paths, key=lambda p: path_cost(state, p))
             self.last_used_model = False
             is_fallback = True
-            print("[RLRouter] Using heuristic fallback (model not loaded)")
 
-        return RoutingDecision(
-            source=src,
-            destination=dst,
-            path=path,
-            algorithm="rl",
-            total_latency=_path_cost(state, path),
-            avg_utilization=_average_path_utilization(state, path),
-            success=True,
+        return build_decision(
+            state,
+            src,
+            dst,
+            path,
+            self.name,
             is_fallback=is_fallback,
+            diagnostics={
+                "qos": evaluate_path(state, path, profile).as_dict(),
+                "candidates_considered": len(paths),
+            },
         )
 
-    def _ppo_select_path(
-        self, state: NetworkState, candidate_paths: list[list[str]]
+    def _observation_fits(self, state: NetworkState) -> bool:
+        """True when this policy can consume an observation built from *state*.
+
+        Two ways it can fail: the live topology differs from the one the policy
+        was trained on (a 25-node policy cannot read a 100-node observation), or
+        the checkpoint predates the current observation layout. Both are checked
+        against the policy's declared observation width rather than assumed, and
+        both return False so the decision is honestly flagged as a fallback
+        instead of crashing or silently reshaping into nonsense.
+        """
+        from ml.features import observation_dim
+
+        expected = observation_dim(len(state.links), len(state.nodes))
+        actual = int(self._model.observation_space.shape[0])
+        if expected != actual:
+            logger.warning(
+                "RLRouter: policy expects a %d-wide observation but this "
+                "topology produces %d (%d links, %d nodes). Using the heuristic "
+                "fallback. Retrain with: python -m ml.training.train_rl",
+                actual,
+                expected,
+                len(state.links),
+                len(state.nodes),
+            )
+            return False
+        return True
+
+    def _policy_select(
+        self,
+        state: NetworkState,
+        src: str,
+        dst: str,
+        paths: list[list[str]],
+        profile: QoSProfile,
     ) -> list[str]:
-        obs = _state_to_obs(state, self._n_links)  # type: ignore[arg-type]
-        action, _ = self._model.predict(obs, deterministic=True)
-        action_idx = int(action) % len(candidate_paths)
-        print(f"[RLRouter DEBUG] predicted action: {action}, action_idx: {action_idx}")
-        return candidate_paths[action_idx]
-
-    def _failed_decision(self, src: str, dst: str) -> RoutingDecision:
-        """Create a failed RL routing decision."""
-        return RoutingDecision(
-            source=src,
-            destination=dst,
-            path=[],
-            algorithm="rl",
-            total_latency=float("inf"),
-            avg_utilization=0.0,
-            success=False,
+        node_index = {node: i for i, node in enumerate(state.nodes)}
+        observation = _build_observation(
+            state,
+            self._n_links or len(state.links),
+            self._n_nodes or len(state.nodes),
+            node_index.get(src, 0),
+            node_index.get(dst, 0),
+            paths,
+            profile,
         )
+        action, _ = self._model.predict(observation, deterministic=True)
+        index = int(action) % len(paths)
+        logger.debug("PPO action=%s -> candidate %d/%d", action, index, len(paths))
+        return paths[index]
 
 
-# ---------------------------------------------------------------------------
-# Graph helpers (shared with fallback heuristic)
-# ---------------------------------------------------------------------------
-
-def _find_candidate_paths(
-    state: NetworkState, src: str, dst: str, limit: int = 10
-) -> list[list[str]]:
-    """Find simple valid paths with breadth-first search."""
-    import networkx as nx
-    G = nx.Graph()
-    for link in state.links:
-        G.add_edge(link.source, link.target)
-    
-    if src not in G or dst not in G or not nx.has_path(G, src, dst):
-        return []
-
-    paths = []
-    try:
-        path_generator = nx.shortest_simple_paths(G, src, dst)
-        for _, path in zip(range(limit), path_generator):
-            paths.append(path)
-    except nx.NetworkXNoPath:
-        pass
-    return paths
-
-
-def _build_adjacency(state: NetworkState) -> dict[str, list[str]]:
-    """Build an undirected adjacency list from the network state."""
-    adjacency: dict[str, list[str]] = {node: [] for node in state.nodes}
-    for link in state.links:
-        adjacency[link.source].append(link.target)
-        adjacency[link.target].append(link.source)
-    return adjacency
-
-
-def _path_cost(state: NetworkState, path: list[str]) -> float:
-    """Calculate total congestion-adjusted latency across a path."""
-    lookup = {
-        frozenset((link.source, link.target)): link.base_latency
-        * (1 + 4 * link.utilization**2)
-        for link in state.links
-    }
-    return sum(
-        lookup[frozenset((path[i], path[i + 1]))]
-        for i in range(len(path) - 1)
-        if frozenset((path[i], path[i + 1])) in lookup
-    )
-
-
-def _average_path_utilization(state: NetworkState, path: list[str]) -> float:
-    """Calculate mean utilization across the selected path."""
-    lookup = {
-        frozenset((link.source, link.target)): link.utilization
-        for link in state.links
-    }
-    values = [
-        lookup[frozenset((path[i], path[i + 1]))]
-        for i in range(len(path) - 1)
-        if frozenset((path[i], path[i + 1])) in lookup
-    ]
-    return sum(values) / len(values) if values else 0.0
+__all__ = ["RLRouter"]

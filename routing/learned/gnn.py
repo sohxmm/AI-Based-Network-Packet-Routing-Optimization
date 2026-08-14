@@ -1,66 +1,65 @@
-"""GNNRouter – wraps a trained Graph Neural Network model for inference.
+"""GNNRouter — inference wrapper around the trained path-ranking GNN.
 
-At startup the router tries to load backend/ml/models/gnn_router.pt.
-If the file is absent (model not yet trained), it falls back to the
-congestion-aware Dijkstra heuristic so the API never fails cold.
+Inference only. The architecture lives in ``ml/architectures/gnn.py`` and the
+training loop in ``ml/training/train_gnn.py``, so a router module can never
+drift from the model it serves.
+
+The model ranks the same congestion-weighted k-shortest candidate set every
+other router sees, and the ranking is conditioned on the QoS profile. There is
+deliberately **no post-hoc constraint filtering**: if the GNN returns a path
+that violates the traffic class's constraints, that is reported as a miss.
+Filtering the model's output through the QoS oracle would make its constraint
+satisfaction rate identical to the classical constrained baseline by
+construction, which would be a meaningless win.
 """
 
 from __future__ import annotations
 
-import random
-import sys
+import logging
 from pathlib import Path
 from typing import Any
 
-# Ensure backend root is on sys.path
-_BACKEND_ROOT = Path(__file__).resolve().parents[1]
-if str(_BACKEND_ROOT) not in sys.path:
-    sys.path.insert(0, str(_BACKEND_ROOT))
+from core.models import NetworkState, RoutingDecision
+from core.paths import build_decision, candidate_paths, failed_decision
+from core.qos import QoSProfile, evaluate_path
+from ml.model_registry import path_for
+from routing.base import Router
 
-from simulator.data_models import NetworkState, RoutingDecision
+logger = logging.getLogger(__name__)
 
-_DEFAULT_MODEL_PATH = (
-    Path(__file__).resolve().parents[1] / "ml" / "models" / "gnn_router.pt"
-)
-
-# ---------------------------------------------------------------------------
-# Lazy imports – torch is only needed when the GNN model is loaded
-# ---------------------------------------------------------------------------
 _torch: Any = None
-_gnn_model_class: Any = None
+_model_class: Any = None
+_build_graph_tensors: Any = None
 
 
-def _try_import_torch():
-    global _torch, _gnn_model_class
+def _try_import_torch() -> bool:
+    """Import torch lazily so the API starts without the ML stack installed."""
+    global _torch, _model_class, _build_graph_tensors
     if _torch is not None:
         return True
     try:
-        import torch  # noqa: PLC0415
-        from ml.gnn_model import GNNRouterModel  # noqa: PLC0415
+        import torch
+
+        from ml.architectures.gnn import GNNRouterModel
+        from ml.features import build_graph_tensors
 
         _torch = torch
-        _gnn_model_class = GNNRouterModel
+        _model_class = GNNRouterModel
+        _build_graph_tensors = build_graph_tensors
         return True
     except ImportError:
         return False
 
 
-# ---------------------------------------------------------------------------
-# GNNRouter
-# ---------------------------------------------------------------------------
-class GNNRouter:
-    """Route packets using a trained GNN policy, with a heuristic fallback.
+class GNNRouter(Router):
+    """Route packets with a trained GNN ranker, falling back to a heuristic."""
 
-    The GNN understands network topology by performing message passing
-    over nodes and edges. It scores candidate paths based on both
-    network state and graph structure.
-
-    Typical usage
-    -------------
-    >>> router = GNNRouter()
-    >>> router.load_model()           # auto-discovers the default model path
-    >>> decision = router.predict(state, "R1", "R5")
-    """
+    name = "gnn"
+    label = "Graph Neural Network"
+    description = (
+        "Two rounds of edge-conditioned message passing produce node and edge "
+        "embeddings; a QoS-conditioned MLP ranks the candidate paths."
+    )
 
     def __init__(self, seed: int = 42, k_paths: int = 5) -> None:
         self._seed = seed
@@ -68,276 +67,174 @@ class GNNRouter:
         self._model: Any = None
         self._model_path: Path | None = None
         self._device: Any = None
-        self._random = random.Random(seed)
 
-    # ------------------------------------------------------------------ #
-    # Model management                                                    #
-    # ------------------------------------------------------------------ #
+    # -- model management -------------------------------------------------
 
     def load_model(self, path: str | Path | None = None) -> None:
-        """Load the GNN model from *path* (defaults to the standard location).
-
-        Raises
-        ------
-        FileNotFoundError
-            If the model file is not found.
-        """
-        candidate = Path(path) if path else _DEFAULT_MODEL_PATH
+        """Load the GNN checkpoint, raising on failure."""
+        candidate = Path(path) if path else path_for("gnn")
 
         if not candidate.exists():
             raise FileNotFoundError(
-                f"GNN model not found at {candidate}.\n"
-                "Run `python -m ml.train_gnn` from the backend/ directory to train."
+                f"GNN model not found at {candidate}. "
+                "Train it with: python -m ml.training.train_gnn"
             )
-
         if not _try_import_torch():
-            raise ImportError(
-                "torch is required to load the GNN model. "
-                "Install it with: pip install torch"
-            )
+            raise ImportError("torch is required to load the GNN model.")
 
-        # Load model weights
-        checkpoint = _torch.load(str(candidate), map_location="cpu")
-        self._model = _gnn_model_class(
+        # weights_only=True: the checkpoint holds only tensors and plain
+        # scalars, and torch.load otherwise executes arbitrary pickle payloads.
+        checkpoint = _torch.load(str(candidate), map_location="cpu", weights_only=True)
+
+        # Build into a local first. Assigning self._model before load_state_dict
+        # succeeds would leave a randomly-initialised model installed after a
+        # failed load, and is_trained would report True while the router served
+        # noise — a worse failure than not loading at all.
+        model = _model_class(
             node_dim=checkpoint.get("node_dim", 3),
             edge_dim=checkpoint.get("edge_dim", 4),
-            hidden_dim=checkpoint.get("hidden_dim", 32),
+            hidden_dim=checkpoint.get("hidden_dim", 64),
         )
-        self._model.load_state_dict(checkpoint["state_dict"])
-        self._model.eval()  # Set to evaluation mode
+        model.load_state_dict(checkpoint["state_dict"])
+        model.eval()
 
-        # Determine device
         self._device = _torch.device("cuda" if _torch.cuda.is_available() else "cpu")
-        self._model = self._model.to(self._device)
+        self._model = model.to(self._device)
         self._model_path = candidate
-
-        print(
-            f"[GNNRouter] Loaded GNN model from {candidate} (device={self._device})"
-        )
+        logger.info("GNNRouter loaded %s (device=%s)", candidate.name, self._device)
 
     def try_load_model(self, path: str | Path | None = None) -> bool:
-        """Attempt to load the model, returning False instead of raising."""
+        """Load the model, reporting failure loudly instead of swallowing it.
+
+        The original was ``except (FileNotFoundError, ImportError, Exception):
+        return False`` with no logging. That is precisely how a missing artifact
+        stayed invisible for the life of the project.
+        """
         try:
             self.load_model(path)
             return True
-        except (FileNotFoundError, ImportError, Exception):
+        except FileNotFoundError as exc:
+            logger.warning(
+                "GNNRouter: no trained model (%s). Falling back to the "
+                "congestion-aware heuristic. Train with: python -m ml.training.train_gnn",
+                exc,
+            )
+            return False
+        except ImportError as exc:
+            logger.warning("GNNRouter: ML dependencies unavailable (%s).", exc)
+            return False
+        except Exception:
+            logger.exception("GNNRouter: unexpected error loading the model.")
             return False
 
     @property
     def is_trained(self) -> bool:
-        """Return True if a GNN model is loaded and ready for inference."""
         return self._model is not None
 
-    # ------------------------------------------------------------------ #
-    # Inference                                                           #
-    # ------------------------------------------------------------------ #
+    @property
+    def requires_model(self) -> bool:
+        return True
 
-    
-    def predict(self, state: NetworkState, src: str, dst: str) -> RoutingDecision:
-        """Return the best routing decision for the given (src, dst) pair.
+    def status(self) -> dict[str, object]:
+        return {
+            "name": self.name,
+            "is_trained": self.is_trained,
+            "requires_model": True,
+            "model_path": str(self._model_path) if self._model_path else None,
+        }
 
-        If the GNN model is loaded, it scores candidate paths by passing
-        the network graph through message-passing layers and aggregating
-        node embeddings along each path.
+    # -- inference --------------------------------------------------------
 
-        Falls back to the congestion-aware heuristic when the model is
-        absent or if no path exists between src and dst.
-        """
+    def find_route(
+        self,
+        state: NetworkState,
+        src: str,
+        dst: str,
+        profile: QoSProfile | None = None,
+    ) -> RoutingDecision:
+        profile = self.resolve_profile(profile)
+
         if src not in state.nodes or dst not in state.nodes:
-            return self._failed_decision(src, dst)
+            return failed_decision(src, dst, self.name)
 
-        candidate_paths = _find_candidate_paths(state, src, dst, limit=self._k_paths)
-        if not candidate_paths:
-            return self._failed_decision(src, dst)
+        paths = candidate_paths(state, src, dst, k=self._k_paths)
+        if not paths:
+            return failed_decision(src, dst, self.name)
 
-        is_fallback = False
         if self._model is not None:
-            path = self._gnn_select_path(state, src, dst, candidate_paths)
+            path = self._rank(state, src, dst, paths, profile)
+            is_fallback = False
         else:
-            # Heuristic fallback: pick path with lowest congestion-adjusted cost
-            path = min(candidate_paths, key=lambda p: _load_balanced_cost(state, p))
+            path = min(paths, key=lambda p: _heuristic_cost(state, p, profile))
             is_fallback = True
 
-        return RoutingDecision(
-            source=src,
-            destination=dst,
-            path=path,
-            algorithm="gnn",
-            total_latency=_path_cost(state, path),
-            avg_utilization=_average_path_utilization(state, path),
-            success=True,
+        return build_decision(
+            state,
+            src,
+            dst,
+            path,
+            self.name,
             is_fallback=is_fallback,
+            diagnostics={
+                "qos": evaluate_path(state, path, profile).as_dict(),
+                "candidates_considered": len(paths),
+            },
         )
 
-    def _gnn_select_path(
-        self, state: NetworkState, src: str, dst: str, candidate_paths: list[list[str]]
+    def _rank(
+        self,
+        state: NetworkState,
+        src: str,
+        dst: str,
+        paths: list[list[str]],
+        profile: QoSProfile,
     ) -> list[str]:
-        """Use the GNN to score and select the best candidate path."""
-        x, edge_index, edge_attr, paths_idx = _build_graph_data(state, candidate_paths, src, dst)
-
-        # Move tensors to device
+        """Return the candidate the model scores best (lowest)."""
+        x, edge_index, edge_attr, paths_idx, path_edges, path_feats = _build_graph_tensors(
+            state, paths, src, dst, profile
+        )
         x = x.to(self._device)
         edge_index = edge_index.to(self._device)
         edge_attr = edge_attr.to(self._device)
+        path_feats = path_feats.to(self._device)
 
         with _torch.no_grad():
-            scores = self._model(x, edge_index, edge_attr, paths_idx)
+            scores = self._model(x, edge_index, edge_attr, paths_idx, path_edges, path_feats)
 
-        # Select path with lowest (best) score
-        best_idx = _torch.argmin(scores).item()
-        return candidate_paths[best_idx]
-
-    def _failed_decision(self, src: str, dst: str) -> RoutingDecision:
-        """Create a failed GNN routing decision."""
-        return RoutingDecision(
-            source=src,
-            destination=dst,
-            path=[],
-            algorithm="gnn",
-            total_latency=float("inf"),
-            avg_utilization=0.0,
-            success=False,
-        )
+        return paths[int(_torch.argmin(scores).item())]
 
 
-# ---------------------------------------------------------------------------
-# Graph construction helpers
-# ---------------------------------------------------------------------------
-
-def _build_graph_data(
-    state: NetworkState, candidate_paths: list[list[str]],
-    src: str = "", dst: str = "",
-) -> tuple[Any, Any, Any, list[list[int]]]:
-    """Build node features, edge index, and edge attributes for the GNN."""
-    import torch as torch_module  # noqa: PLC0415
-
-    nodes = state.nodes
-    node_to_idx = {node: i for i, node in enumerate(nodes)}
-    num_nodes = len(nodes)
-
-    # 1. Build node features [num_nodes, 3]
-    degrees = [0] * num_nodes
-    for link in state.links:
-        degrees[node_to_idx[link.source]] += 1
-        degrees[node_to_idx[link.target]] += 1
-    max_deg = max(1, max(degrees)) if degrees else 1
-
-    x_list = []
-    for i, node in enumerate(nodes):
-        # Node features: [is_src, is_dst, degree_norm]
-        is_src = 1.0 if node == src else 0.0
-        is_dst = 1.0 if node == dst else 0.0
-        deg = float(degrees[i]) / max_deg
-        x_list.append([is_src, is_dst, deg])
-
-    x = torch_module.tensor(x_list, dtype=torch_module.float32)
-
-    # 2. Build edge index and edge attributes [num_edges, 4]
-    edges_src = []
-    edges_dst = []
-    edge_attr_list = []
-
-    for link in state.links:
-        u_idx = node_to_idx[link.source]
-        v_idx = node_to_idx[link.target]
-        attr = [
-            float(link.utilization),
-            float(link.queue_size) / 100.0,
-            float(link.packet_loss_rate) / 0.06,
-            float(link.base_latency) / 25.0,
-        ]
-        # u -> v
-        edges_src.append(u_idx)
-        edges_dst.append(v_idx)
-        edge_attr_list.append(attr)
-        # v -> u (bidirectional)
-        edges_src.append(v_idx)
-        edges_dst.append(u_idx)
-        edge_attr_list.append(attr)
-
-    edge_index = torch_module.tensor([edges_src, edges_dst], dtype=torch_module.long)
-    edge_attr = torch_module.tensor(edge_attr_list, dtype=torch_module.float32)
-
-    # 3. Convert candidate paths to node indices
-    paths_idx = [[node_to_idx[n] for n in p] for p in candidate_paths]
-
-    return x, edge_index, edge_attr, paths_idx
+#: Heuristic-fallback tuning constants, named rather than inline magic numbers.
+BOTTLENECK_THRESHOLD = 0.7
+BOTTLENECK_WEIGHT = 100.0
+IMBALANCE_WEIGHT = 50.0
 
 
-def _find_candidate_paths(
-    state: NetworkState, src: str, dst: str, limit: int = 10
-) -> list[list[str]]:
-    """Find simple valid paths with breadth-first search."""
-    import networkx as nx
-    G = nx.Graph()
-    for link in state.links:
-        G.add_edge(link.source, link.target)
-    
-    if src not in G or dst not in G or not nx.has_path(G, src, dst):
-        return []
+def _heuristic_cost(state: NetworkState, path: list[str], profile: QoSProfile) -> float:
+    """Load-balancing-aware fallback cost used when no model is loaded.
 
-    paths = []
-    try:
-        path_generator = nx.shortest_simple_paths(G, src, dst)
-        for _, path in zip(range(limit), path_generator):
-            paths.append(path)
-    except nx.NetworkXNoPath:
-        pass
-    return paths
-
-
-def _build_adjacency(state: NetworkState) -> dict[str, list[str]]:
-    """Build an undirected adjacency list from the network state."""
-    adjacency: dict[str, list[str]] = {node: [] for node in state.nodes}
-    for link in state.links:
-        adjacency[link.source].append(link.target)
-        adjacency[link.target].append(link.source)
-    return adjacency
-
-
-def _path_cost(state: NetworkState, path: list[str]) -> float:
-    """Calculate total congestion-adjusted latency across a path."""
-    lookup = {
-        frozenset((link.source, link.target)): link.base_latency
-        * (1 + 4 * link.utilization**2)
-        for link in state.links
-    }
-    return sum(
-        lookup[frozenset((path[i], path[i + 1]))]
-        for i in range(len(path) - 1)
-        if frozenset((path[i], path[i + 1])) in lookup
-    )
-def _load_balanced_cost(state: NetworkState, path: list[str]) -> float:
-    """Load-balancing aware cost — penalizes congested paths and bottleneck links."""
-    lookup = {frozenset((link.source, link.target)): link for link in state.links}
-    path_links = [
-        lookup[frozenset((path[i], path[i + 1]))]
-        for i in range(len(path) - 1)
-        if frozenset((path[i], path[i + 1])) in lookup
-    ]
-    if not path_links:
+    Deliberately *not* identical to plain Dijkstra: it penalises the path's
+    bottleneck link and its load imbalance against the network mean, so the
+    fallback still expresses the project's load-balancing intent. It is still a
+    heuristic, and every decision it produces is flagged ``is_fallback=True``.
+    """
+    evaluation = evaluate_path(state, path, profile)
+    if evaluation.score == float("inf"):
         return float("inf")
 
-    latency = sum(lnk.base_latency * (1 + 4 * lnk.utilization ** 2) for lnk in path_links)
-    max_util = max(lnk.utilization for lnk in path_links)
-    bottleneck_penalty = max(0.0, max_util - 0.7) * 100.0
-    all_utils = [lnk.utilization for lnk in state.links]
+    bottleneck_penalty = (
+        max(0.0, evaluation.bottleneck_utilization - BOTTLENECK_THRESHOLD)
+        * BOTTLENECK_WEIGHT
+    )
+
+    all_utils = [link.utilization for link in state.links]
     network_mean = sum(all_utils) / len(all_utils) if all_utils else 0.0
-    path_mean = sum(lnk.utilization for lnk in path_links) / len(path_links)
-    imbalance_penalty = max(0.0, path_mean - network_mean) * 50.0
-    return latency + bottleneck_penalty + imbalance_penalty
+    imbalance_penalty = (
+        max(0.0, evaluation.bottleneck_utilization - network_mean) * IMBALANCE_WEIGHT
+    )
+
+    infeasibility = 0.0 if evaluation.feasible else 1000.0
+    return evaluation.score + bottleneck_penalty + imbalance_penalty + infeasibility
 
 
-
-def _average_path_utilization(state: NetworkState, path: list[str]) -> float:
-    """Calculate mean utilization across the selected path."""
-    lookup = {
-        frozenset((link.source, link.target)): link.utilization
-        for link in state.links
-    }
-    values = [
-        lookup[frozenset((path[i], path[i + 1]))]
-        for i in range(len(path) - 1)
-        if frozenset((path[i], path[i + 1])) in lookup
-    ]
-    return sum(values) / len(values) if values else 0.0
+__all__ = ["GNNRouter"]

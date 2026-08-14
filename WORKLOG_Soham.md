@@ -1,6 +1,6 @@
 # Internship Work Log
 
-Total hours: 147
+Total hours: 153.5
 
 ## 09/06/2026
 
@@ -451,3 +451,22 @@ Tasks:
 
 Status:
 - The definition of "good routing" now lives in one place, and the project's central question is answerable for the first time
+
+## 14/08/2026
+
+Hours: 6.5
+
+Tasks:
+- Rebuilt the routing layer on the shared primitives: one `Router` protocol, one `build_router_set()`, eight algorithms across `classical/`, `heuristic/` and `learned/`
+- There had been three different method names across six routers, so every call site needed its own dispatch table and adding an algorithm meant editing five files
+- Added `routing/random_baseline.py` as the floor. A reward number or an accuracy percentage conveys nothing without knowing what random guessing scores
+- Added `routing/classical/constrained.py` as the ceiling: k-shortest paths filtered by QoS feasibility, plus `qos_oracle()` and `qos_floor()`
+- Added `routing/failover.py`: reroute detection on watched flows, and `measure_convergence()` which cuts a link and counts ticks to a QoS-satisfying route, reporting latency before and after so a fast-but-worse recovery is distinguishable from a slow-but-better one
+- Created `ml/model_registry.py` as the single source of truth for artifact paths, read by both training and serving so they cannot diverge again
+- Created `ml/features.py` and `ml/local_features.py` so the environment and the router build byte-identical observations
+- Rewrote every `try_load_model` so a missing artifact logs at WARNING with the exact training command instead of returning False in silence
+- Found a second bug while fixing the first: `GNNRouter.load_model` assigned `self._model` before `load_state_dict`, so a failed load left a randomly-initialised model installed with `is_trained` reporting True. The router would have served pure noise while claiming to be trained
+- Made learned routers import torch lazily, so `import routing` costs milliseconds and works on a machine with no ML stack installed
+
+Status:
+- Silent model-loading failures are now structurally impossible, and every algorithm answers the same interface

@@ -7,17 +7,37 @@ Bellman-Ford is still valuable in distributed and dynamic routing systems
 because it naturally models repeated neighbor-to-neighbor relaxation and can
 detect negative-weight cycles. This project uses non-negative congestion costs,
 but the cycle check is included for learning and correctness.
+
+**How to read its benchmark row.** With identical weights and non-negative
+costs, Bellman-Ford and Dijkstra are both exact, so they necessarily return the
+same cost — we measure ``dijkstra_match_rate = 1.000`` in every
+scenario. That is mathematically required, not a defect. Bellman-Ford is
+therefore reported as a *correctness cross-check on Dijkstra*, not as an
+independent baseline, and it is excluded from the degeneracy guardrail for
+exactly that reason.
 """
 
-from simulator.data_models import NetworkState, RoutingDecision
+from __future__ import annotations
+
+from core.models import NetworkState, RoutingDecision
+from core.paths import build_decision, failed_decision
+from core.qos import QoSProfile, qos_link_cost
+from routing.base import Router
 
 
-def find_route(state: NetworkState, src: str, dst: str) -> RoutingDecision:
+def find_route(
+    state: NetworkState,
+    src: str,
+    dst: str,
+    profile: QoSProfile | None = None,
+) -> RoutingDecision:
     """Find a minimum-cost path using the Bellman-Ford algorithm."""
-    if src not in state.nodes or dst not in state.nodes:
-        return _failed_decision(src, dst)
+    profile = Router.resolve_profile(profile)
 
-    edges = _build_edges(state)
+    if src not in state.nodes or dst not in state.nodes:
+        return failed_decision(src, dst, "bellman_ford")
+
+    edges = _build_edges(state, profile)
     distances = {node: float("inf") for node in state.nodes}
     previous: dict[str, str | None] = {node: None for node in state.nodes}
     distances[src] = 0.0
@@ -32,30 +52,26 @@ def find_route(state: NetworkState, src: str, dst: str) -> RoutingDecision:
         if not changed:
             break
 
+    # Negative-cycle detection. Unreachable with this cost model, kept for
+    # correctness and because it is the algorithm's defining capability.
     for start, end, weight in edges:
         if distances[start] + weight < distances[end]:
-            return _failed_decision(src, dst)
+            return failed_decision(src, dst, "bellman_ford")
 
     if distances[dst] == float("inf"):
-        return _failed_decision(src, dst)
+        return failed_decision(src, dst, "bellman_ford")
 
     path = _reconstruct_path(previous, src, dst)
-    return RoutingDecision(
-        source=src,
-        destination=dst,
-        path=path,
-        algorithm="bellman_ford",
-        total_latency=distances[dst],
-        avg_utilization=_average_path_utilization(state, path),
-        success=True,
-    )
+    return build_decision(state, src, dst, path, "bellman_ford")
 
 
-def _build_edges(state: NetworkState) -> list[tuple[str, str, float]]:
+def _build_edges(
+    state: NetworkState, profile: QoSProfile
+) -> list[tuple[str, str, float]]:
     """Build directed edge pairs for an undirected network state."""
     edges: list[tuple[str, str, float]] = []
     for link in state.links:
-        weight = link.base_latency * (1 + 4 * link.utilization ** 2)
+        weight = qos_link_cost(link, profile)
         edges.append((link.source, link.target, weight))
         edges.append((link.target, link.source, weight))
     return edges
@@ -75,31 +91,18 @@ def _reconstruct_path(previous: dict[str, str | None], src: str, dst: str) -> li
     return path
 
 
-def _failed_decision(src: str, dst: str) -> RoutingDecision:
-    """Create a failed Bellman-Ford decision."""
-    return RoutingDecision(
-        source=src,
-        destination=dst,
-        path=[],
-        algorithm="bellman_ford",
-        total_latency=float("inf"),
-        avg_utilization=0.0,
-        success=False,
+class BellmanFordRouter(Router):
+    """Class wrapper so the dispatcher sees one uniform interface."""
+
+    name = "bellman_ford"
+    label = "Bellman-Ford"
+    description = (
+        "Exact shortest path by repeated edge relaxation. Reported as a "
+        "correctness cross-check on Dijkstra, not an independent baseline."
     )
 
+    def find_route(self, state, src, dst, profile=None):
+        return find_route(state, src, dst, profile)
 
-def _average_path_utilization(state: NetworkState, path: list[str]) -> float:
-    """Calculate mean utilization across the selected path."""
-    if len(path) < 2:
-        return 0.0
 
-    lookup = {
-        frozenset((link.source, link.target)): link.utilization
-        for link in state.links
-    }
-    values = [
-        lookup[frozenset((path[index], path[index + 1]))]
-        for index in range(len(path) - 1)
-        if frozenset((path[index], path[index + 1])) in lookup
-    ]
-    return sum(values) / len(values) if values else 0.0
+__all__ = ["BellmanFordRouter", "find_route"]
