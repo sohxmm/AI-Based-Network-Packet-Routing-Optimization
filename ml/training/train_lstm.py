@@ -4,8 +4,7 @@ Run from the repository root::
 
     python -m ml.training.train_lstm
 
-The audit's verdict on the previous version was that it was unfalsifiable
-busywork, and it was right on every count:
+The previous version was unfalsifiable busywork, on every count:
 
 * **The target was a random walk.** Utilization evolved as
   ``u_{t+1} = clip(u_t + N(0, 0.05))``. The Bayes-optimal one-step predictor for
@@ -28,7 +27,12 @@ busywork, and it was right on every count:
 
 The checkpoint is written **only if the skill score is positive**. A forecaster
 that cannot beat copying the last value should not be deployed, and shipping it
-anyway is how a headline feature ends up never having run.
+anyway is how a headline feature ends up never having run. The first run of this
+script scored -1.77 and correctly refused to save; the model was predicting
+levels, where persistence is nearly unbeatable. It now predicts the residual
+``u_{t+1} - u_t``, so the loss is computed on the part that is actually
+learnable. That is a modelling fix, not a moved goalpost: the baseline and the
+held-out test set are unchanged.
 """
 
 from __future__ import annotations
@@ -71,7 +75,11 @@ def make_windows(
 
 
 def persistence_mse(x: torch.Tensor, y: torch.Tensor) -> float:
-    """MSE of ``u_hat = u_t`` — copy the most recent observation forward."""
+    """MSE of ``u_hat = u_t`` — copy the most recent observation forward.
+
+    In residual terms this is the hypothesis "the change is zero", which is the
+    honest thing for the model to be measured against.
+    """
     return float(torch.mean((x[:, -1, :] - y) ** 2))
 
 
@@ -133,6 +141,9 @@ def main() -> None:
     logger.info("Model has %d trainable parameters", model.parameter_count())
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, "min", patience=4, factor=0.5
+    )
     criterion = nn.MSELoss()
 
     best_val = float("inf")
@@ -147,14 +158,21 @@ def main() -> None:
         for start in range(0, len(train_x), args.batch_size):
             batch = permutation[start : start + args.batch_size]
             optimizer.zero_grad()
-            loss = criterion(model(train_x[batch]), train_y[batch])
+            # Loss on the residual, not the level: predicting the level makes
+            # the identity function most of the answer and drowns the signal.
+            target_delta = train_y[batch] - train_x[batch][:, -1, :]
+            loss = criterion(model.delta(train_x[batch]), target_delta)
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
             total += float(loss) * len(batch)
 
         model.eval()
         with torch.no_grad():
+            # Validation is scored on the reconstructed level, because that is
+            # what the forecaster actually serves.
             val_loss = float(criterion(model(val_x), val_y))
+        scheduler.step(val_loss)
 
         if val_loss < best_val - 1e-7:
             best_val = val_loss

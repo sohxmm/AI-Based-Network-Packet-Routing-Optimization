@@ -45,9 +45,16 @@ def build_graph(state: NetworkState) -> nx.Graph:
 
 
 def path_links(state: NetworkState, path: list[str]) -> list[LinkState] | None:
-    """Links along *path*, or ``None`` if any hop does not exist in *state*."""
-    if len(path) < 2:
+    """Links along *path*, or ``None`` if any hop does not exist in *state*.
+
+    A single-node path is a *valid* route that traverses no links, so it
+    returns an empty list rather than ``None``. Conflating "no links" with
+    "invalid" made routing a node to itself cost infinity.
+    """
+    if not path:
         return None
+    if len(path) == 1:
+        return []
     lookup = link_lookup(state)
     links: list[LinkState] = []
     for index in range(len(path) - 1):
@@ -94,7 +101,10 @@ def candidate_paths(
     at training time and at serving time.
     """
     if src == dst:
-        return []
+        # Routing a node to itself is trivially satisfiable: one node, no
+        # links, zero cost. Returning [] here made every candidate-based router
+        # report failure for a demand the classical ones answered fine.
+        return [[src]] if src in state.nodes else []
     graph = build_graph(state)
     if src not in graph or dst not in graph:
         return []

@@ -12,8 +12,8 @@ if __name__ == "__main__":
 
 import networkx as nx
 
-from router.dijkstra import find_route
-from simulator.network_sim import NetworkSimulator
+from routing.classical.dijkstra import find_route
+from core.simulator import NetworkSimulator
 
 
 def test_100_random_pairs_all_succeed() -> None:

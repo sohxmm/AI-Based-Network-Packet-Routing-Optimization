@@ -1,11 +1,17 @@
-services:
+# `git clone && make up` has to work on a machine that has never seen this
+# project. It previously did not: three services declared `env_file: .env`,
+# .env is gitignored, and nothing created it, so the very first command a
+# reviewer runs failed with "env file .env not found".
 
+services:
   db:
     image: postgres:16
     container_name: routing-db
     restart: unless-stopped
     env_file:
-      - .env
+      # required:false means a fresh clone starts without any manual step.
+      - path: .env
+        required: false
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-routinguser}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-routingpass}
@@ -20,47 +26,37 @@ services:
       timeout: 5s
       retries: 5
 
-  pgadmin:
-    image: dpage/pgadmin4:8
-    container_name: routing-pgadmin
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@example.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
-    ports:
-      - "5050:80"
-    depends_on:
-      db:
-        condition: service_healthy
-
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      # Root context: the service imports core/, routing/, ml/ and experiments/.
+      context: .
+      dockerfile: service/Dockerfile
     container_name: routing-backend
     restart: unless-stopped
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-routinguser}:${POSTGRES_PASSWORD:-routingpass}@db:5432/${POSTGRES_DB:-routing_db}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Live ICMP probing stays off unless explicitly enabled.
+      LIVE_PROBE_ENABLED: ${LIVE_PROBE_ENABLED:-0}
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          # An unbounded ACO benchmark can otherwise consume the whole host.
+          cpus: "2.0"
+          memory: 4G
 
   frontend:
     build:
-      context: ./frontend
+      context: ./web
       dockerfile: Dockerfile
     container_name: routing-frontend
     restart: unless-stopped
@@ -68,6 +64,26 @@ services:
       - "5173:80"
     depends_on:
       backend:
+        condition: service_healthy
+
+  # A development tool with a default password does not belong in the path a
+  # reviewer runs by accident. Start it explicitly:
+  #   docker compose --profile dev up
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: routing-pgadmin
+    restart: unless-stopped
+    profiles: ["dev"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-changeme}
+    ports:
+      - "5050:80"
+    depends_on:
+      db:
         condition: service_healthy
 
 volumes:

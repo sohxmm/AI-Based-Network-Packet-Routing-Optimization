@@ -10,10 +10,10 @@
   "test_mse": {
     "persistence": 0.001336805522441864,
     "window_mean": 0.016810912638902664,
-    "lstm": 0.003704898525029421
+    "lstm": 0.0011367262341082096
   },
-  "skill_score_vs_persistence": -1.7714566276341381,
-  "beats_persistence": false,
-  "train_seconds": 26.4,
+  "skill_score_vs_persistence": 0.1496697051102701,
+  "beats_persistence": true,
+  "train_seconds": 28.3,
   "parameters": 66226
 }

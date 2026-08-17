@@ -19,15 +19,12 @@ from pathlib import Path
 
 import numpy as np
 
-_BACKEND_ROOT = Path(__file__).resolve().parents[1]
-if str(_BACKEND_ROOT) not in sys.path:
-    sys.path.insert(0, str(_BACKEND_ROOT))
 
-from simulator.network_sim import NetworkSimulator
-from simulator.data_models import NetworkState
-from router.rl_agent import RLRouter
-from router.multi_agent_router import MultiAgentRouter
-from ml.network_partition import partition_network
+from core.simulator import NetworkSimulator
+from core.models import NetworkState
+from routing.learned.rl import RLRouter
+from routing.learned.multi_agent import MultiAgentRouter
+from ml.environments.partition import partition_network
 
 
 def _utilization_stats(state: NetworkState):
@@ -81,7 +78,7 @@ def test_multi_agent_vs_single_agent():
     
     for i, (src, dst) in enumerate(pairs):
         # Single-agent
-        rl_dec = rl.predict(state, src, dst)
+        rl_dec = rl.find_route(state, src, dst)
         if rl_dec.success:
             rl_results["success"] += 1
             rl_results["latency"].append(rl_dec.total_latency)
