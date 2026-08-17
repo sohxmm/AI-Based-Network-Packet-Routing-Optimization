@@ -39,6 +39,7 @@ import torch.nn as nn
 from gymnasium import spaces
 from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.policies import ActorCriticPolicy
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
 from core.simulator import NetworkSimulator
@@ -80,10 +81,49 @@ class AsymmetricExtractor(BaseFeaturesExtractor):
         return self.net(view)
 
 
+class AsymmetricActorCriticPolicy(ActorCriticPolicy):
+    """A policy whose actor is local-only and whose critic sees everything.
+
+    The asymmetry lives in the *class*, not in a patch applied after
+    construction. That distinction is not cosmetic: ``PPO.load`` rebuilds the
+    policy by calling this constructor with the saved ``policy_kwargs``, and SB3
+    hands both feature extractors the same kwargs. A post-construction patch is
+    therefore silently lost on reload and the checkpoint fails to restore with a
+    shape mismatch — which is exactly what happened on the first attempt,
+    leaving the multi-agent router on its heuristic fallback for an entire
+    benchmark run while reporting ``fallback_rate = 1.00``.
+    """
+
+    def __init__(self, *args, local_dim: int = LOCAL_DIM, **kwargs):
+        self.local_dim = local_dim
+        kwargs["share_features_extractor"] = False
+        kwargs["features_extractor_class"] = AsymmetricExtractor
+        extractor_kwargs = dict(kwargs.get("features_extractor_kwargs") or {})
+        extractor_kwargs.update({"local_dim": local_dim, "use_global": False})
+        kwargs["features_extractor_kwargs"] = extractor_kwargs
+
+        super().__init__(*args, **kwargs)
+
+        # The base class built the critic's extractor from the actor's kwargs.
+        # Swap in the global-aware variant, then rebuild the optimizer so it
+        # owns the new parameters.
+        self.vf_features_extractor = AsymmetricExtractor(
+            self.observation_space,
+            features_dim=self.features_extractor.features_dim,
+            local_dim=local_dim,
+            use_global=True,
+        ).to(self.device)
+
+        current_lr = self.optimizer.param_groups[0]["lr"]
+        self.optimizer = self.optimizer_class(
+            self.parameters(), lr=current_lr, **self.optimizer_kwargs
+        )
+
+
 def build_ctde_ppo(env, seed: int, learning_rate: float = 3e-4) -> PPO:
     """Build a PPO whose critic sees the global summary and whose actor does not."""
-    model = PPO(
-        policy="MlpPolicy",
+    return PPO(
+        policy=AsymmetricActorCriticPolicy,
         env=env,
         learning_rate=learning_rate,
         n_steps=1024,
@@ -96,33 +136,7 @@ def build_ctde_ppo(env, seed: int, learning_rate: float = 3e-4) -> PPO:
         seed=seed,
         device="cpu",
         verbose=0,
-        policy_kwargs={
-            "features_extractor_class": AsymmetricExtractor,
-            "features_extractor_kwargs": {"local_dim": LOCAL_DIM, "use_global": False},
-            "share_features_extractor": False,
-        },
     )
-
-    # Replace the critic's extractor with the global-aware variant. Done
-    # explicitly rather than relying on SB3's construction order, which is an
-    # internal detail that could change between versions.
-    policy = model.policy
-    assert hasattr(policy, "vf_features_extractor"), (
-        "share_features_extractor=False should give the policy a separate "
-        "critic extractor; SB3 internals may have changed."
-    )
-    policy.vf_features_extractor = AsymmetricExtractor(
-        policy.observation_space,
-        features_dim=policy.features_extractor.features_dim,
-        local_dim=LOCAL_DIM,
-        use_global=True,
-    ).to(policy.device)
-
-    # New parameters need a fresh optimizer.
-    policy.optimizer = policy.optimizer_class(
-        policy.parameters(), lr=learning_rate, **policy.optimizer_kwargs
-    )
-    return model
 
 
 def evaluate_region(model: PPO, env: RegionalRoutingEnv, episodes: int, seed: int) -> float:

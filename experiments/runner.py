@@ -176,16 +176,67 @@ def _per_run_metrics(rows: list[dict]) -> dict[str, float]:
     }
 
 
-def _dijkstra_match_rate(rows: list[dict], baseline_rows: list[dict]) -> float:
-    """Fraction of decisions identical to the baseline's, by path."""
-    if not rows or not baseline_rows:
-        return 0.0
-    matches = sum(
-        1
-        for r, b in zip(rows, baseline_rows)
-        if r["success"] and b["success"] and r["path"] == b["path"]
-    )
-    return matches / len(rows)
+def degeneracy_probe(
+    scenario: Scenario,
+    seed: int,
+    algorithms: list[str],
+    n_steps: int = 20,
+    m_pairs: int = 10,
+) -> dict[str, float]:
+    """Measure how often each algorithm picks the same path as Dijkstra.
+
+    This has to be a *separate, open-loop* pass, and the reason is a genuine
+    consequence of closing the loop. In the main benchmark every algorithm runs
+    its own trajectory, so by step two their networks have legitimately
+    diverged; comparing their chosen paths then measures trajectory divergence,
+    not algorithmic similarity. Measured that way, even Bellman-Ford scored a
+    match rate of 0.00 against Dijkstra, which is mathematically impossible for
+    two exact solvers on identical weights.
+
+    So the degeneracy guardrail runs here instead: one shared simulator, no flow
+    registration, every algorithm asked the same question about the same
+    network. That is the only setting in which "did it choose differently?" is
+    a question about the algorithm.
+    """
+    rng = random.Random(seed)
+    sim = NetworkSimulator(num_nodes=scenario.num_nodes, seed=seed)
+    routers = build_router_set(seed=seed)
+    scenario.prepare(sim, rng)
+
+    demand_rng = random.Random(seed * 31 + 7)
+    classes = [c.value for c in scenario.traffic_classes]
+
+    matches: dict[str, int] = defaultdict(int)
+    totals: dict[str, int] = defaultdict(int)
+
+    for step in range(n_steps):
+        scenario.per_step(sim, rng, step)
+        state = sim.step()  # advanced once, shared by every algorithm
+        nodes = list(state.nodes)
+
+        for _ in range(m_pairs):
+            src, dst = demand_rng.sample(nodes, 2)
+            profile = get_profile(demand_rng.choice(classes))
+
+            baseline = routers["dijkstra"].find_route(state, src, dst, profile)
+            if not baseline.success:
+                continue
+
+            for algorithm in algorithms:
+                if algorithm == "dijkstra":
+                    continue
+                decision = routers[algorithm].find_route(state, src, dst, profile)
+                totals[algorithm] += 1
+                if decision.success and decision.path == baseline.path:
+                    matches[algorithm] += 1
+
+    rates = {
+        algorithm: (matches[algorithm] / totals[algorithm]) if totals[algorithm] else 0.0
+        for algorithm in algorithms
+        if algorithm != "dijkstra"
+    }
+    rates["dijkstra"] = 1.0
+    return rates
 
 
 def run_scenario(
@@ -217,7 +268,6 @@ def run_scenario(
     )
 
     per_run: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
-    match_rates: dict[str, list[float]] = defaultdict(list)
     scenario_meta: dict = {}
     topology: dict = {}
     started = time.time()
@@ -232,15 +282,16 @@ def run_scenario(
         results = run_single_replicate(
             scenario, seed, n_steps, m_pairs, algorithms, predictor
         )
-        baseline_rows = results.get("dijkstra", [])
-
         for algorithm, rows in results.items():
             for key, value in _per_run_metrics(rows).items():
                 per_run[algorithm][key].append(value)
-            match_rates[algorithm].append(_dijkstra_match_rate(rows, baseline_rows))
 
         if (run + 1) % max(1, n_runs // 5) == 0:
             logger.info("  %d/%d runs complete", run + 1, n_runs)
+
+    # Degeneracy is measured separately, on a shared open-loop trajectory.
+    logger.info("  running the degeneracy probe (shared state, open loop)...")
+    match_rates = degeneracy_probe(scenario, base_seed, algorithms)
 
     elapsed = time.time() - started
 
@@ -254,7 +305,7 @@ def run_scenario(
             key: summarise(values)["mean"] for key, values in metrics.items()
         }
         block["mean_latency_ci"] = summarise(metrics["mean_latency"])
-        block["dijkstra_match_rate"] = float(np.mean(match_rates[algorithm]))
+        block["dijkstra_match_rate"] = match_rates.get(algorithm, 0.0)
         if algorithm != "dijkstra":
             block["comparison_vs_dijkstra"] = paired_comparison(
                 metrics["mean_latency"], baseline_latencies
@@ -408,19 +459,18 @@ def run_parameterized_scenario(
         )
 
     per_run: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
-    match_rates: dict[str, list[float]] = defaultdict(list)
 
     for run in range(n_runs):
         results = run_single_replicate(
             scenario, seed + run, steps, pairs_per_step, algorithms, None
         )
-        baseline_rows = results.get("dijkstra", [])
         for algorithm, rows in results.items():
             for key, value in _per_run_metrics(rows).items():
                 per_run[algorithm][key].append(value)
-            match_rates[algorithm].append(_dijkstra_match_rate(rows, baseline_rows))
         if on_progress:
             on_progress(run + 1, n_runs)
+
+    match_rates = degeneracy_probe(scenario, seed, algorithms, n_steps=10, m_pairs=6)
 
     baseline = per_run.get("dijkstra", {}).get("mean_latency", [])
     algorithms_block: dict[str, dict] = {}
@@ -430,7 +480,7 @@ def run_parameterized_scenario(
             continue
         block: dict[str, Any] = {k: summarise(v)["mean"] for k, v in metrics.items()}
         block["mean_latency_ci"] = summarise(metrics["mean_latency"])
-        block["dijkstra_match_rate"] = float(np.mean(match_rates[algorithm]))
+        block["dijkstra_match_rate"] = match_rates.get(algorithm, 0.0)
         if algorithm != "dijkstra" and baseline:
             block["comparison_vs_dijkstra"] = paired_comparison(
                 metrics["mean_latency"], baseline
