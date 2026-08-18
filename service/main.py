@@ -15,6 +15,7 @@ import logging
 import os
 import time
 from collections.abc import AsyncIterator
+from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -42,6 +43,37 @@ FAILURE_BACKOFF_THRESHOLD = 10
 LIVENESS_WINDOW_SECONDS = 10.0
 
 _last_tick = {"t": 0.0, "consecutive_failures": 0}
+
+
+async def _migrate_or_create() -> None:
+    """Bring the schema up to date, preferring Alembic.
+
+    ``create_all`` can only CREATE, never ALTER, so it is not a migration path:
+    adding a column to an existing deployment silently does nothing. Alembic is
+    the real mechanism; ``create_all`` remains as a fallback for tests and
+    throwaway databases where no migration environment is configured.
+    """
+    config_path = Path(__file__).resolve().parent / "alembic.ini"
+    if config_path.exists():
+        try:
+            from alembic import command
+            from alembic.config import Config
+
+            config = Config(str(config_path))
+            config.set_main_option(
+                "script_location", str(config_path.parent / "migrations")
+            )
+            await asyncio.to_thread(command.upgrade, config, "head")
+            logger.info("Database schema is at head")
+            return
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Alembic upgrade failed (%s); falling back to create_all. "
+                "Existing tables will NOT be altered.",
+                exc,
+            )
+
+    await init_db()
 
 
 async def advance_simulator_forever() -> None:
@@ -88,7 +120,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Starting AI-Based Network Packet Routing Optimization")
 
     try:
-        await init_db()
+        await _migrate_or_create()
     except Exception as exc:  # noqa: BLE001 - the app is useful without a DB
         logger.warning(
             "Database unavailable (%s). The API will run; history and metrics "

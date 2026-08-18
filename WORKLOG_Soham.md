@@ -1,6 +1,6 @@
 # Internship Work Log
 
-Total hours: 186.5
+Total hours: 192.5
 
 ## 09/06/2026
 
@@ -573,3 +573,22 @@ Tasks:
 
 Status:
 - The decentralised-execution claim is supported by the code rather than asserted in a docstring
+
+## 24/08/2026
+
+Hours: 6.0
+
+Tasks:
+- Rebuilt the benchmark on independent replications
+- The old harness ran a paired Wilcoxon over 20,000 observations from a *single* trajectory. Successive steps are heavily autocorrelated, so that is roughly one independent observation repeated, and with that much pseudo-replication any difference becomes significant. It is why every result file reported p = 0.0, which is numerical underflow rather than a p-value
+- The unit of replication is now one seeded run, with each algorithm on its own closed-loop trajectory. That is mandatory once routing changes the network, or whichever ran first would pollute the state the others observe
+- Added Cliff's delta and a bootstrap 95% CI, and removed `effect_size_pct`, which was a raw percent difference in means and is not an effect size
+- Fixed `diversity_index`, which read a `path` key that was never stored and was therefore 0.000 in every committed file. The metric that would have shown whether the AI explores alternatives had never once worked
+- Fixed `max_path_utilization`, which took a max over 20,000 samples and was therefore 1.000 for every algorithm in every scenario
+- Seeded every source of randomness; the old harness used the unseeded global `random` module in seven places and had no `--seed` flag
+- Introduced Alembic. Tables were created with `create_all`, which can only CREATE and never ALTER, so adding a column to an existing deployment silently did nothing
+- Dropped `PacketLog`, which had zero references anywhere, activated `AlgorithmMetric`, whose rows were built and thrown away behind a commented-out commit, and added the `avg_utilization` column that `congestion_events` had been reading without it existing
+- Started the learning guide: background, the system, and all eight algorithms written up in full
+
+Status:
+- The benchmark produces evidence rather than numbers
