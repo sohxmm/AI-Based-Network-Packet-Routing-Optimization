@@ -161,7 +161,7 @@ def _per_run_metrics(rows: list[dict]) -> dict[str, float]:
     latencies = [r["latency"] for r in successes if np.isfinite(r["latency"])]
     max_utils = [r["max_path_utilization"] for r in successes]
 
-    return {
+    metrics = {
         "mean_latency": float(np.mean(latencies)) if latencies else float("nan"),
         "p95_latency": float(np.percentile(latencies, 95)) if latencies else float("nan"),
         "success_rate": len(successes) / len(rows),
@@ -174,6 +174,21 @@ def _per_run_metrics(rows: list[dict]) -> dict[str, float]:
         "diversity_index": path_diversity(rows),
         "mean_hops": float(np.mean([r["path_len"] - 1 for r in successes])) if successes else 0.0,
     }
+
+    # A single aggregate QoS number is the wrong metric for mixed traffic. An
+    # emergency class with a 1% satisfaction rate and a bulk class at 100% averages
+    # out to something that looks fine, and the class that actually has an SLA is
+    # the one being failed. Keys are flat so the cross-run aggregation, which
+    # averages one dict of scalars per run, needs no special case.
+    by_class: dict[str, list[dict]] = defaultdict(list)
+    for row in rows:
+        by_class[row["traffic_class"]].append(row)
+    for traffic_class, class_rows in by_class.items():
+        metrics[f"qos_satisfaction_rate__{traffic_class}"] = sum(
+            1 for r in class_rows if r["qos_feasible"]
+        ) / len(class_rows)
+
+    return metrics
 
 
 def degeneracy_probe(

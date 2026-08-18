@@ -1,0 +1,273 @@
+{
+  "scenario": "large_topology_100_nodes",
+  "description": "Scale test: 100 nodes, 200 links, average degree 4. Previously a degree-2 ring, where no algorithm could differentiate.",
+  "generated_at": "2026-08-29T12:51:33.802692+00:00",
+  "replication": {
+    "n_runs": 15,
+    "n_steps": 40,
+    "m_pairs": 8,
+    "base_seed": 1000,
+    "unit_of_replication": "one independently seeded run",
+    "note": "Each algorithm runs its own closed-loop trajectory per seed with an identical topology, background traffic and demand schedule. Statistics are computed across runs, never across the autocorrelated decisions within one run."
+  },
+  "topology": {
+    "num_nodes": 100,
+    "num_edges": 200,
+    "avg_degree": 4.0,
+    "diameter": 9,
+    "is_connected": true
+  },
+  "scenario_config": {
+    "name": "large_topology_100_nodes",
+    "description": "Scale test: 100 nodes, 200 links, average degree 4. Previously a degree-2 ring, where no algorithm could differentiate.",
+    "num_nodes": 100,
+    "traffic_classes": [
+      "best_effort"
+    ],
+    "notes": "",
+    "prepared": {}
+  },
+  "models_loaded": {
+    "gnn": true,
+    "rl": true,
+    "multi_agent": true
+  },
+  "forecaster_loaded": true,
+  "algorithms": {
+    "dijkstra": {
+      "mean_latency": 82.05304159000977,
+      "p95_latency": 133.2610299552142,
+      "success_rate": 1.0,
+      "fallback_rate": 0.0,
+      "qos_satisfaction_rate": 1.0,
+      "mean_path_max_utilization": 0.46071232859866945,
+      "p95_path_max_utilization": 0.6129217420167199,
+      "diversity_index": 0.3473899383333331,
+      "mean_hops": 4.367083333333334,
+      "mean_latency_ci": {
+        "mean": 82.05304159000977,
+        "std": 3.705991020432614,
+        "ci95_low": 80.17755136690802,
+        "ci95_high": 83.92853181311152,
+        "n": 15
+      },
+      "dijkstra_match_rate": 1.0
+    },
+    "bellman_ford": {
+      "mean_latency": 83.85808965852428,
+      "p95_latency": 137.56940592947907,
+      "success_rate": 1.0,
+      "fallback_rate": 0.0,
+      "qos_satisfaction_rate": 1.0,
+      "mean_path_max_utilization": 0.4642612028327116,
+      "p95_path_max_utilization": 0.6169565240715679,
+      "diversity_index": 0.40174603174603174,
+      "mean_hops": 4.441666666666667,
+      "mean_latency_ci": {
+        "mean": 83.85808965852428,
+        "std": 3.3024886565517946,
+        "ci95_low": 82.18679980565672,
+        "ci95_high": 85.52937951139184,
+        "n": 15
+      },
+      "dijkstra_match_rate": 1.0,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": 1.8050480685145118,
+        "pct_diff": 2.19985515897595,
+        "wilcoxon_p_value": 0.041259765625,
+        "wilcoxon_statistic": 24.0,
+        "cliffs_delta": 0.3244444444444444,
+        "effect_magnitude": "small",
+        "ci95_low": 0.2845116817100691,
+        "ci95_high": 3.1999463809284348
+      }
+    },
+    "constrained": {
+      "mean_latency": 82.4036664427323,
+      "p95_latency": 133.4483960295063,
+      "success_rate": 1.0,
+      "fallback_rate": 0.0,
+      "qos_satisfaction_rate": 1.0,
+      "mean_path_max_utilization": 0.46456206977948356,
+      "p95_path_max_utilization": 0.6125290651197294,
+      "diversity_index": 0.3098592417460313,
+      "mean_hops": 4.384375000000001,
+      "mean_latency_ci": {
+        "mean": 82.4036664427323,
+        "std": 3.7109317507572976,
+        "ci95_low": 80.52567586510517,
+        "ci95_high": 84.28165702035943,
+        "n": 15
+      },
+      "dijkstra_match_rate": 1.0,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": 0.3506248527225296,
+        "pct_diff": 0.427314875753758,
+        "wilcoxon_p_value": 0.93408203125,
+        "wilcoxon_statistic": 58.0,
+        "cliffs_delta": 0.057777777777777775,
+        "effect_magnitude": "negligible",
+        "ci95_low": -0.7805821789058338,
+        "ci95_high": 1.643444828430235
+      }
+    },
+    "aco": {
+      "mean_latency": 161.627416527769,
+      "p95_latency": 344.606269847091,
+      "success_rate": 1.0,
+      "fallback_rate": 0.0,
+      "qos_satisfaction_rate": 1.0,
+      "mean_path_max_utilization": 0.5326927988015047,
+      "p95_path_max_utilization": 0.6901254185461599,
+      "diversity_index": 0.8626190476190476,
+      "mean_hops": 8.599791666666668,
+      "mean_latency_ci": {
+        "mean": 161.627416527769,
+        "std": 9.619761796586344,
+        "ci95_low": 156.75914536936793,
+        "ci95_high": 166.49568768617004,
+        "n": 15
+      },
+      "dijkstra_match_rate": 0.215,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": 79.57437493775919,
+        "pct_diff": 96.97918979696621,
+        "wilcoxon_p_value": 6.103515625e-05,
+        "wilcoxon_statistic": 0.0,
+        "cliffs_delta": 1.0,
+        "effect_magnitude": "large",
+        "ci95_low": 75.48271033291219,
+        "ci95_high": 83.51490567374864
+      }
+    },
+    "gnn": {
+      "mean_latency": 82.36251595845758,
+      "p95_latency": 133.64112347557813,
+      "success_rate": 1.0,
+      "fallback_rate": 0.0,
+      "qos_satisfaction_rate": 1.0,
+      "mean_path_max_utilization": 0.45792070344753166,
+      "p95_path_max_utilization": 0.6047873850896288,
+      "diversity_index": 0.3174398530687829,
+      "mean_hops": 4.366041666666665,
+      "mean_latency_ci": {
+        "mean": 82.36251595845758,
+        "std": 3.4905217293661366,
+        "ci95_low": 80.59606824154265,
+        "ci95_high": 84.1289636753725,
+        "n": 15
+      },
+      "dijkstra_match_rate": 0.975,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": 0.30947436844783077,
+        "pct_diff": 0.3771637985026387,
+        "wilcoxon_p_value": 0.638671875,
+        "wilcoxon_statistic": 51.0,
+        "cliffs_delta": 0.10222222222222223,
+        "effect_magnitude": "negligible",
+        "ci95_low": -1.1415458639381435,
+        "ci95_high": 1.6540519355819918
+      }
+    },
+    "rl": {
+      "mean_latency": 82.98445454793314,
+      "p95_latency": 133.6651829755836,
+      "success_rate": 1.0,
+      "fallback_rate": 1.0,
+      "qos_satisfaction_rate": 1.0,
+      "mean_path_max_utilization": 0.4650877066341373,
+      "p95_path_max_utilization": 0.6192846300244703,
+      "diversity_index": 0.3719047619047619,
+      "mean_hops": 4.4193750000000005,
+      "mean_latency_ci": {
+        "mean": 82.98445454793314,
+        "std": 3.199539192951515,
+        "ci95_low": 81.36526431198082,
+        "ci95_high": 84.60364478388546,
+        "n": 15
+      },
+      "dijkstra_match_rate": 1.0,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": 0.931412957923384,
+        "pct_diff": 1.135135200200533,
+        "wilcoxon_p_value": 0.12054443359375,
+        "wilcoxon_statistic": 32.0,
+        "cliffs_delta": 0.2088888888888889,
+        "effect_magnitude": "small",
+        "ci95_low": 0.07353970999524537,
+        "ci95_high": 1.8623482159011393
+      }
+    },
+    "multi_agent": {
+      "mean_latency": 150.17432581237955,
+      "p95_latency": 373.1232692209624,
+      "success_rate": 1.0,
+      "fallback_rate": 0.03874999999999999,
+      "qos_satisfaction_rate": 1.0,
+      "mean_path_max_utilization": 0.5106616653588325,
+      "p95_path_max_utilization": 0.6718390465228092,
+      "diversity_index": 0.6488888888888888,
+      "mean_hops": 7.051041666666667,
+      "mean_latency_ci": {
+        "mean": 150.17432581237955,
+        "std": 13.168597624955497,
+        "ci95_low": 143.51009593124996,
+        "ci95_high": 156.83855569350914,
+        "n": 15
+      },
+      "dijkstra_match_rate": 0.375,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": 68.12128422236972,
+        "pct_diff": 83.02103481154039,
+        "wilcoxon_p_value": 6.103515625e-05,
+        "wilcoxon_statistic": 0.0,
+        "cliffs_delta": 1.0,
+        "effect_magnitude": "large",
+        "ci95_low": 61.26105942728684,
+        "ci95_high": 75.24298272670437
+      }
+    },
+    "random_baseline": {
+      "mean_latency": 102.89369674185812,
+      "p95_latency": 155.79736457748848,
+      "success_rate": 1.0,
+      "fallback_rate": 0.0,
+      "qos_satisfaction_rate": 1.0,
+      "mean_path_max_utilization": 0.48717008956883867,
+      "p95_path_max_utilization": 0.6383635794619619,
+      "diversity_index": 0.8986423105291002,
+      "mean_hops": 5.415625,
+      "mean_latency_ci": {
+        "mean": 102.89369674185812,
+        "std": 4.317648136673314,
+        "ci95_low": 100.70866530965054,
+        "ci95_high": 105.0787281740657,
+        "n": 15
+      },
+      "dijkstra_match_rate": 0.185,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": 20.840655151848345,
+        "pct_diff": 25.39900380047065,
+        "wilcoxon_p_value": 6.103515625e-05,
+        "wilcoxon_statistic": 0.0,
+        "cliffs_delta": 1.0,
+        "effect_magnitude": "large",
+        "ci95_low": 19.070064490278988,
+        "ci95_high": 22.64823437977495
+      }
+    }
+  },
+  "warnings": [
+    "gnn: chooses the same path as Dijkstra 98% of the time, so it is degenerate and adds no information.",
+    "rl: 100% of decisions came from the heuristic fallback, not a trained model. This row is a heuristic, not rl.",
+    "rl: chooses the same path as Dijkstra 100% of the time, so it is degenerate and adds no information."
+  ],
+  "runtime_seconds": 405.1
+}

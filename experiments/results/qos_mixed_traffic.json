@@ -1,0 +1,324 @@
+{
+  "scenario": "qos_mixed_traffic",
+  "description": "All five traffic classes at once under moderate congestion. The headline metric here is constraint satisfaction rate, not latency: Dijkstra optimises an additive cost and cannot express a constraint.",
+  "generated_at": "2026-08-29T12:58:01.147190+00:00",
+  "replication": {
+    "n_runs": 15,
+    "n_steps": 40,
+    "m_pairs": 8,
+    "base_seed": 1000,
+    "unit_of_replication": "one independently seeded run",
+    "note": "Each algorithm runs its own closed-loop trajectory per seed with an identical topology, background traffic and demand schedule. Statistics are computed across runs, never across the autocorrelated decisions within one run."
+  },
+  "topology": {
+    "num_nodes": 25,
+    "num_edges": 50,
+    "avg_degree": 4.0,
+    "diameter": 5,
+    "is_connected": true
+  },
+  "scenario_config": {
+    "name": "qos_mixed_traffic",
+    "description": "All five traffic classes at once under moderate congestion. The headline metric here is constraint satisfaction rate, not latency: Dijkstra optimises an additive cost and cannot express a constraint.",
+    "num_nodes": 25,
+    "traffic_classes": [
+      "emergency",
+      "interactive",
+      "gaming",
+      "bulk",
+      "best_effort"
+    ],
+    "notes": "",
+    "prepared": {
+      "hot_links": 12,
+      "classes": [
+        "emergency",
+        "interactive",
+        "gaming",
+        "bulk",
+        "best_effort"
+      ]
+    }
+  },
+  "models_loaded": {
+    "gnn": true,
+    "rl": true,
+    "multi_agent": true
+  },
+  "forecaster_loaded": true,
+  "algorithms": {
+    "dijkstra": {
+      "mean_latency": 65.37238513618277,
+      "p95_latency": 122.69413324758548,
+      "success_rate": 1.0,
+      "fallback_rate": 0.0,
+      "qos_satisfaction_rate": 0.9420833333333333,
+      "mean_path_max_utilization": 0.5545855671855606,
+      "p95_path_max_utilization": 0.82840978632593,
+      "diversity_index": 0.3386603388032055,
+      "mean_hops": 2.692083333333333,
+      "qos_satisfaction_rate__bulk": 0.9917908927989573,
+      "qos_satisfaction_rate__emergency": 0.8400971214254113,
+      "qos_satisfaction_rate__gaming": 0.9505874441111487,
+      "qos_satisfaction_rate__interactive": 0.926795853423252,
+      "qos_satisfaction_rate__best_effort": 1.0,
+      "mean_latency_ci": {
+        "mean": 65.37238513618277,
+        "std": 4.5943652055074455,
+        "ci95_low": 63.04731554567895,
+        "ci95_high": 67.69745472668659,
+        "n": 15
+      },
+      "dijkstra_match_rate": 1.0
+    },
+    "bellman_ford": {
+      "mean_latency": 65.78630299861283,
+      "p95_latency": 121.37566762999579,
+      "success_rate": 1.0,
+      "fallback_rate": 0.0,
+      "qos_satisfaction_rate": 0.9347916666666667,
+      "mean_path_max_utilization": 0.5577381774666583,
+      "p95_path_max_utilization": 0.8366007857962373,
+      "diversity_index": 0.32119568231340273,
+      "mean_hops": 2.7025,
+      "qos_satisfaction_rate__bulk": 0.9945928701198249,
+      "qos_satisfaction_rate__gaming": 0.930585589849344,
+      "qos_satisfaction_rate__emergency": 0.8509470778427204,
+      "qos_satisfaction_rate__best_effort": 1.0,
+      "qos_satisfaction_rate__interactive": 0.9047024496137805,
+      "mean_latency_ci": {
+        "mean": 65.78630299861283,
+        "std": 5.09644985947411,
+        "ci95_low": 63.20714351569097,
+        "ci95_high": 68.36546248153468,
+        "n": 15
+      },
+      "dijkstra_match_rate": 1.0,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": 0.4139178624300532,
+        "pct_diff": 0.6331692832803725,
+        "wilcoxon_p_value": 0.48870849609375,
+        "wilcoxon_statistic": 47.0,
+        "cliffs_delta": 0.07555555555555556,
+        "effect_magnitude": "negligible",
+        "ci95_low": -1.0426557679767796,
+        "ci95_high": 1.8788333188140074
+      }
+    },
+    "constrained": {
+      "mean_latency": 66.43889860419353,
+      "p95_latency": 124.17812039754021,
+      "success_rate": 1.0,
+      "fallback_rate": 0.0,
+      "qos_satisfaction_rate": 0.9754166666666666,
+      "mean_path_max_utilization": 0.5524135790633589,
+      "p95_path_max_utilization": 0.8072296538170597,
+      "diversity_index": 0.38395752582348636,
+      "mean_hops": 2.7402083333333334,
+      "qos_satisfaction_rate__gaming": 0.980597817139248,
+      "qos_satisfaction_rate__interactive": 0.9714647139826285,
+      "qos_satisfaction_rate__best_effort": 1.0,
+      "qos_satisfaction_rate__emergency": 0.923796171745357,
+      "qos_satisfaction_rate__bulk": 0.9989247311827957,
+      "mean_latency_ci": {
+        "mean": 66.43889860419353,
+        "std": 5.2145008140273115,
+        "ci95_low": 63.79999709548919,
+        "ci95_high": 69.07780011289786,
+        "n": 15
+      },
+      "dijkstra_match_rate": 0.99,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": 1.0665134680107424,
+        "pct_diff": 1.6314434080827822,
+        "wilcoxon_p_value": 0.12054443359375,
+        "wilcoxon_statistic": 32.0,
+        "cliffs_delta": 0.19111111111111112,
+        "effect_magnitude": "small",
+        "ci95_low": -0.06738876194336421,
+        "ci95_high": 2.2950368703818076
+      }
+    },
+    "aco": {
+      "mean_latency": 105.56383113065962,
+      "p95_latency": 222.24849609050628,
+      "success_rate": 0.9993749999999999,
+      "fallback_rate": 0.0006250000000000001,
+      "qos_satisfaction_rate": 0.9091666666666666,
+      "mean_path_max_utilization": 0.6214606986214009,
+      "p95_path_max_utilization": 0.8678635536023905,
+      "diversity_index": 0.7725811157436328,
+      "mean_hops": 4.239600313479624,
+      "qos_satisfaction_rate__best_effort": 0.9979482323232323,
+      "qos_satisfaction_rate__gaming": 0.8864988238146775,
+      "qos_satisfaction_rate__emergency": 0.7612685562703485,
+      "qos_satisfaction_rate__bulk": 0.997141472868217,
+      "qos_satisfaction_rate__interactive": 0.90161338595319,
+      "mean_latency_ci": {
+        "mean": 105.56383113065962,
+        "std": 8.075187363814837,
+        "ci95_low": 101.47722248345852,
+        "ci95_high": 109.65043977786073,
+        "n": 15
+      },
+      "dijkstra_match_rate": 0.49,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": 40.19144599447687,
+        "pct_diff": 61.48077037536669,
+        "wilcoxon_p_value": 6.103515625e-05,
+        "wilcoxon_statistic": 0.0,
+        "cliffs_delta": 1.0,
+        "effect_magnitude": "large",
+        "ci95_low": 37.33013385811145,
+        "ci95_high": 43.22667566353558
+      }
+    },
+    "gnn": {
+      "mean_latency": 65.25747822266386,
+      "p95_latency": 120.96224588694085,
+      "success_rate": 1.0,
+      "fallback_rate": 0.0,
+      "qos_satisfaction_rate": 0.9429166666666666,
+      "mean_path_max_utilization": 0.5509286337558029,
+      "p95_path_max_utilization": 0.8179217043804538,
+      "diversity_index": 0.3249425682215072,
+      "mean_hops": 2.6912499999999997,
+      "qos_satisfaction_rate__gaming": 0.9618780515504962,
+      "qos_satisfaction_rate__bulk": 0.9933430167110511,
+      "qos_satisfaction_rate__emergency": 0.8233573550333548,
+      "qos_satisfaction_rate__interactive": 0.9415504708984049,
+      "qos_satisfaction_rate__best_effort": 1.0,
+      "mean_latency_ci": {
+        "mean": 65.25747822266386,
+        "std": 6.2842622891352296,
+        "ci95_low": 62.07720271263191,
+        "ci95_high": 68.43775373269581,
+        "n": 15
+      },
+      "dijkstra_match_rate": 0.97,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": -0.11490691351891845,
+        "pct_diff": -0.17577286384693797,
+        "wilcoxon_p_value": 0.389404296875,
+        "wilcoxon_statistic": 44.0,
+        "cliffs_delta": 0.04,
+        "effect_magnitude": "negligible",
+        "ci95_low": -1.6547272238419486,
+        "ci95_high": 1.7686937817233357
+      }
+    },
+    "rl": {
+      "mean_latency": 69.20962138888036,
+      "p95_latency": 126.66873714876553,
+      "success_rate": 1.0,
+      "fallback_rate": 0.0,
+      "qos_satisfaction_rate": 0.9218750000000001,
+      "mean_path_max_utilization": 0.5711319147320479,
+      "p95_path_max_utilization": 0.8580379289069717,
+      "diversity_index": 0.4686169238390259,
+      "mean_hops": 2.9145833333333333,
+      "qos_satisfaction_rate__best_effort": 1.0,
+      "qos_satisfaction_rate__bulk": 0.9864376727121825,
+      "qos_satisfaction_rate__interactive": 0.9082234873447986,
+      "qos_satisfaction_rate__gaming": 0.9278844213296058,
+      "qos_satisfaction_rate__emergency": 0.7854522747394019,
+      "mean_latency_ci": {
+        "mean": 69.20962138888036,
+        "std": 6.244011398197319,
+        "ci95_low": 66.04971564013736,
+        "ci95_high": 72.36952713762336,
+        "n": 15
+      },
+      "dijkstra_match_rate": 0.625,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": 3.8372362526976023,
+        "pct_diff": 5.869812222246335,
+        "wilcoxon_p_value": 0.00030517578125,
+        "wilcoxon_statistic": 3.0,
+        "cliffs_delta": 0.5644444444444444,
+        "effect_magnitude": "large",
+        "ci95_low": 2.1786471221623094,
+        "ci95_high": 5.721535115068482
+      }
+    },
+    "multi_agent": {
+      "mean_latency": 103.05530823185195,
+      "p95_latency": 255.87613422908316,
+      "success_rate": 1.0,
+      "fallback_rate": 0.024374999999999997,
+      "qos_satisfaction_rate": 0.8197916666666666,
+      "mean_path_max_utilization": 0.6274964328449821,
+      "p95_path_max_utilization": 0.9207213102475875,
+      "diversity_index": 0.43637609819896667,
+      "mean_hops": 3.6149999999999998,
+      "qos_satisfaction_rate__bulk": 0.9507702347514173,
+      "qos_satisfaction_rate__best_effort": 1.0,
+      "qos_satisfaction_rate__gaming": 0.773892642904605,
+      "qos_satisfaction_rate__emergency": 0.6151747818242727,
+      "qos_satisfaction_rate__interactive": 0.7588792702517771,
+      "mean_latency_ci": {
+        "mean": 103.05530823185195,
+        "std": 9.943952352712905,
+        "ci95_low": 98.02297401580043,
+        "ci95_high": 108.08764244790348,
+        "n": 15
+      },
+      "dijkstra_match_rate": 0.575,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": 37.6829230956692,
+        "pct_diff": 57.64348817496669,
+        "wilcoxon_p_value": 6.103515625e-05,
+        "wilcoxon_statistic": 0.0,
+        "cliffs_delta": 1.0,
+        "effect_magnitude": "large",
+        "ci95_low": 33.99110705944049,
+        "ci95_high": 42.097051864491554
+      }
+    },
+    "random_baseline": {
+      "mean_latency": 95.4592882175372,
+      "p95_latency": 159.32363527920694,
+      "success_rate": 1.0,
+      "fallback_rate": 0.0,
+      "qos_satisfaction_rate": 0.8541666666666667,
+      "mean_path_max_utilization": 0.6377513497162645,
+      "p95_path_max_utilization": 0.9230199776648225,
+      "diversity_index": 0.8513653166612557,
+      "mean_hops": 3.842916666666666,
+      "qos_satisfaction_rate__emergency": 0.6172967467003079,
+      "qos_satisfaction_rate__best_effort": 1.0,
+      "qos_satisfaction_rate__interactive": 0.8081922415834921,
+      "qos_satisfaction_rate__gaming": 0.870455569055117,
+      "qos_satisfaction_rate__bulk": 0.9595976673708692,
+      "mean_latency_ci": {
+        "mean": 95.4592882175372,
+        "std": 7.023732043646009,
+        "ci95_low": 91.90478937905733,
+        "ci95_high": 99.01378705601708,
+        "n": 15
+      },
+      "dijkstra_match_rate": 0.18,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": 30.08690308135442,
+        "pct_diff": 46.02387234101653,
+        "wilcoxon_p_value": 6.103515625e-05,
+        "wilcoxon_statistic": 0.0,
+        "cliffs_delta": 1.0,
+        "effect_magnitude": "large",
+        "ci95_low": 28.37050600730616,
+        "ci95_high": 31.752417233005346
+      }
+    }
+  },
+  "warnings": [
+    "gnn: chooses the same path as Dijkstra 97% of the time, so it is degenerate and adds no information."
+  ],
+  "runtime_seconds": 161.7
+}
