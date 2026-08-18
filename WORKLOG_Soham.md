@@ -1,6 +1,6 @@
 # Internship Work Log
 
-Total hours: 192.5
+Total hours: 197.5
 
 ## 09/06/2026
 
@@ -592,3 +592,18 @@ Tasks:
 
 Status:
 - The benchmark produces evidence rather than numbers
+
+## 25/08/2026
+
+Hours: 5.0
+
+Tasks:
+- Ran the full benchmark across all seven scenarios and generated the results document, the README table and the per-scenario figures
+- The QoS scenario came back with the result the project actually rests on, and it is not the flattering one: the classical constrained router wins every traffic class, and no learned router beats it
+- Wrote it up as a training-objective gap rather than a verdict on the approach. The GNN was trained to rank by additive cost and the PPO agent was rewarded for latency, so neither has ever been asked to satisfy a constraint, and they behave exactly as trained
+- Found that a single aggregate QoS number was hiding the signal. `best_effort` has no hard constraints, sits at 100% for everyone and drags every row together: the overall spread is about 15 points while the emergency-class spread is about 31. Added per-class satisfaction to the runner and a per-class table to the report
+- Rewrote the known-issues document against the real artifacts, removing three reward figures that appear nowhere in the committed evaluation file
+- Wrote up the QoS and 100-node results in the learning guide, including the finding that the PPO agent cannot run on a topology it was not trained on while the GNN can
+
+Status:
+- Every published number is now generated from an artifact rather than typed by hand
