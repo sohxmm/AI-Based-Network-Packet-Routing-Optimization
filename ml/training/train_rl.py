@@ -1,106 +1,88 @@
-"""train_rl.py â€“ Train a PPO agent on NetworkRoutingEnv.
+"""Train the single-agent PPO routing policy.
 
-Usage (from the backend/ directory):
-    python -m ml.train_rl
+Run from the repository root::
 
-What this script does:
-1. Validates the environment with Stable-Baselines3 check_env().
-2. Wraps the environment in a Monitor for episode statistics.
-3. Initialises a PPO agent with an MlpPolicy on GPU (falls back to CPU).
-4. Trains for 500,000 timesteps with periodic checkpoints every 50k steps.
-5. Evaluates the final policy over 10 episodes.
-6. Saves the final model to backend/ml/models/rl_router_final.
-7. Logs training metrics to TensorBoard under runs/ppo_routing/.
+    python -m ml.training.train_rl
+
+Fixes applied here, on top of the environment repairs in
+``ml/environments/routing_env.py``:
+
+* **The save path comes from the model registry.** Training used to write
+  ``rl_router_final`` while the router loaded ``ppo_routing_agent.zip``. Nothing
+  connected the two, and the mismatch went unnoticed for the life of the project
+  because the loader swallowed the resulting ``FileNotFoundError`` in silence.
+* **Seeded.** ``PPO(...)`` was constructed without a seed, so no run was
+  reproducible.
+* **TensorBoard actually configured.** The old script printed "TensorBoard logs
+  -> ..." and told the user to run ``tensorboard --logdir``, but never passed
+  ``tensorboard_log=``, so there were no event files to read.
+* **Baselines reported.** The run ends by evaluating random, Dijkstra-equivalent
+  and oracle policies on the same seeded episodes and printing the normalized
+  score, because a raw episode return conveys nothing on its own.
+* **Observation layout stored in the checkpoint**, so the router can detect a
+  stale or mismatched policy instead of reshaping into nonsense.
 """
 
 from __future__ import annotations
 
-import sys
+import argparse
+import json
+import logging
 import time
 from pathlib import Path
 
-# Ensure backend root is importable when run as `python -m ml.train_rl`
-_BACKEND_ROOT = Path(__file__).resolve().parents[1]
-if str(_BACKEND_ROOT) not in sys.path:
-    sys.path.insert(0, str(_BACKEND_ROOT))
-
-import numpy as np
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.monitor import Monitor
 
-from ml.rl_environment import NetworkRoutingEnv
-from simulator.network_sim import NetworkSimulator
+from ml.environments.routing_env import NetworkRoutingEnv
+from ml.evaluation.baselines import format_table, run_full_evaluation
+from ml.model_registry import RESULTS_DIR, path_for
 
+logger = logging.getLogger("train_rl")
 
-# ---------------------------------------------------------------------------
-# Paths
-# ---------------------------------------------------------------------------
-_ROOT = Path(__file__).parent
-_MODEL_DIR = _ROOT / "models"
-_LOG_DIR = _ROOT.parent.parent / "runs" / "ppo_routing"
-_FINAL_MODEL_PATH = _MODEL_DIR / "rl_router_final"
-_CHECKPOINT_PREFIX = str(_MODEL_DIR / "ppo_checkpoint")
+LOG_DIR = Path(__file__).resolve().parents[2] / "experiments" / "runs" / "ppo_routing"
 
 
 def main() -> None:
-    _MODEL_DIR.mkdir(parents=True, exist_ok=True)
-    _LOG_DIR.mkdir(parents=True, exist_ok=True)
+    parser = argparse.ArgumentParser(description="Train the PPO routing policy.")
+    parser.add_argument("--timesteps", type=int, default=300_000)
+    parser.add_argument("--num-nodes", type=int, default=25)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--eval-freq", type=int, default=15_000)
+    parser.add_argument("--eval-episodes", type=int, default=5)
+    parser.add_argument("--final-eval-episodes", type=int, default=20)
+    parser.add_argument("--learning-rate", type=float, default=3e-4)
+    args = parser.parse_args()
 
-    # ------------------------------------------------------------------ #
-    # 1. Environment validation                                           #
-    # ------------------------------------------------------------------ #
-    print("=" * 60)
-    print("PHASE 4 â€” PPO Routing Agent Training")
-    print("=" * 60)
-    print("\n[1/5] Validating environment with check_env()...")
-    validation_env = NetworkRoutingEnv(seed=0)
-    check_env(validation_env, warn=True)
-    validation_env.close()
-    print("      check_env() passed âœ“")
-
-    # ------------------------------------------------------------------ #
-    # 2. Training environment                                             #
-    # ------------------------------------------------------------------ #
-    print("\n[2/5] Creating training & evaluation environments...")
-    train_env = Monitor(NetworkRoutingEnv(seed=42))
-    eval_env = Monitor(NetworkRoutingEnv(seed=99))
-
-    # ------------------------------------------------------------------ #
-    # 3. Determine device                                                 #
-    # ------------------------------------------------------------------ #
-    try:
-        import torch
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-    except ImportError:
-        device = "cpu"
-    print(f"      Compute device: {device.upper()}")
-
-    # ------------------------------------------------------------------ #
-    # 4. PPO agent                                                        #
-    # ------------------------------------------------------------------ #
-    print("\n[3/5] Initialising PPO agent...")
-    checkpoint_callback = CheckpointCallback(
-        save_freq=50_000,
-        save_path=str(_MODEL_DIR),
-        name_prefix="ppo_checkpoint",
-        verbose=1,
-    )
-    eval_callback = EvalCallback(
-        eval_env,
-        best_model_save_path=str(_MODEL_DIR),
-        log_path=str(_LOG_DIR),
-        eval_freq=25_000,
-        n_eval_episodes=5,
-        deterministic=True,
-        verbose=1,
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s", datefmt="%H:%M:%S"
     )
 
+    model_dir = path_for("rl").parent
+    model_dir.mkdir(parents=True, exist_ok=True)
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+    logger.info("[1/5] Validating the environment...")
+    probe = NetworkRoutingEnv(num_nodes=args.num_nodes, seed=0)
+    check_env(probe, warn=True)
+    n_links, n_nodes = probe.n_links, probe.n_nodes
+    obs_dim = probe.observation_space.shape[0]
+    probe.close()
+    logger.info(
+        "      check_env passed. obs_dim=%d (%d links, %d nodes)", obs_dim, n_links, n_nodes
+    )
+
+    logger.info("[2/5] Building training and evaluation environments...")
+    train_env = Monitor(NetworkRoutingEnv(num_nodes=args.num_nodes, seed=args.seed))
+    eval_env = Monitor(NetworkRoutingEnv(num_nodes=args.num_nodes, seed=args.seed + 57))
+
+    logger.info("[3/5] Initialising PPO (seed=%d)...", args.seed)
     model = PPO(
         policy="MlpPolicy",
         env=train_env,
-        learning_rate=3e-4,
+        learning_rate=args.learning_rate,
         n_steps=2048,
         batch_size=64,
         n_epochs=10,
@@ -110,62 +92,81 @@ def main() -> None:
         ent_coef=0.01,
         vf_coef=0.5,
         max_grad_norm=0.5,
-        device=device,
-        verbose=1,
+        seed=args.seed,
+        tensorboard_log=str(LOG_DIR),
+        device="cpu",
+        verbose=0,
     )
 
-    # ------------------------------------------------------------------ #
-    # 5. Training                                                         #
-    # ------------------------------------------------------------------ #
-    total_timesteps = 500_000
-    print(f"\n[4/5] Training PPO for {total_timesteps:,} timesteps...")
-    t0 = time.time()
-    model.learn(
-        total_timesteps=total_timesteps,
-        callback=[checkpoint_callback, eval_callback],
-        progress_bar=False,
+    callbacks = [
+        CheckpointCallback(
+            save_freq=max(10_000, args.timesteps // 6),
+            save_path=str(model_dir / "checkpoints_rl"),
+            name_prefix="ppo_checkpoint",
+        ),
+        EvalCallback(
+            eval_env,
+            best_model_save_path=str(model_dir / "checkpoints_rl"),
+            log_path=str(LOG_DIR),
+            eval_freq=args.eval_freq,
+            n_eval_episodes=args.eval_episodes,
+            deterministic=True,
+            verbose=0,
+        ),
+    ]
+
+    logger.info("[4/5] Training for %s timesteps...", f"{args.timesteps:,}")
+    started = time.time()
+    model.learn(total_timesteps=args.timesteps, callback=callbacks, progress_bar=False)
+    elapsed = time.time() - started
+    logger.info("      done in %.1fs (%.1f min)", elapsed, elapsed / 60)
+
+    # Record the observation layout alongside the weights so the serving router
+    # can refuse a mismatched policy rather than silently misinterpreting it.
+    model.custom_data = {"n_links": n_links, "n_nodes": n_nodes, "obs_dim": obs_dim}
+    destination = path_for("rl").with_suffix("")
+    model.save(str(destination))
+    logger.info("[5/5] Saved policy to %s.zip", destination)
+
+    logger.info("Evaluating against the random floor and the oracle ceiling...")
+    report = run_full_evaluation(
+        model=model,
+        n_episodes=args.final_eval_episodes,
+        seed=args.seed + 999,
+        output=RESULTS_DIR / "rl_evaluation.json",
     )
-    elapsed = time.time() - t0
-    print(f"      Training complete in {elapsed:.1f}s ({elapsed/60:.1f} min) âœ“")
+    print()
+    print(format_table(report))
+    print()
 
-    # ------------------------------------------------------------------ #
-    # 6. Save final model                                                 #
-    # ------------------------------------------------------------------ #
-    model.save(str(_FINAL_MODEL_PATH))
-    print(f"\n[5/5] Final model saved â†’ {_FINAL_MODEL_PATH}.zip âœ“")
+    ppo_score = report["normalized_scores"].get("ppo")
+    if ppo_score is not None:
+        if ppo_score <= 0:
+            logger.warning(
+                "Normalized score %.3f: the policy is no better than random. "
+                "That is the result and it must be reported as such.",
+                ppo_score,
+            )
+        else:
+            logger.info(
+                "Normalized score %.3f — the policy closes %.0f%% of the gap "
+                "between random and the greedy oracle.",
+                ppo_score,
+                100 * ppo_score,
+            )
 
-    # ------------------------------------------------------------------ #
-    # 7. Quick evaluation                                                 #
-    # ------------------------------------------------------------------ #
-    print("\n--- Post-training Evaluation (10 episodes) ---")
-    obs, _ = eval_env.reset()
-    episode_rewards: list[float] = []
-    ep_reward = 0.0
-    episodes_done = 0
-    max_episodes = 10
-
-    while episodes_done < max_episodes:
-        action, _ = model.predict(obs, deterministic=True)
-        obs, reward, terminated, truncated, info = eval_env.step(action)
-        ep_reward += float(reward)
-        if terminated or truncated:
-            episode_rewards.append(ep_reward)
-            ep_reward = 0.0
-            episodes_done += 1
-            obs, _ = eval_env.reset()
-
-    mean_r = float(np.mean(episode_rewards))
-    std_r = float(np.std(episode_rewards))
-    print(f"  Mean episode reward : {mean_r:.4f} Â± {std_r:.4f}")
-    print(f"  Min / Max           : {min(episode_rewards):.4f} / {max(episode_rewards):.4f}")
-    print("\nTensorBoard logs â†’", _LOG_DIR)
-    print("Run: tensorboard --logdir", _LOG_DIR)
+    report["training"] = {
+        "timesteps": args.timesteps,
+        "seed": args.seed,
+        "train_seconds": round(elapsed, 1),
+        "obs_dim": obs_dim,
+        "num_nodes": args.num_nodes,
+    }
+    (RESULTS_DIR / "rl_evaluation.json").write_text(json.dumps(report, indent=2))
 
     train_env.close()
     eval_env.close()
-    print("\nâœ… Phase 4 â€“ RL training complete.")
 
 
 if __name__ == "__main__":
     main()
-

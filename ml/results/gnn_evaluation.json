@@ -1,0 +1,23 @@
+{
+  "model": "gnn_router",
+  "objective": "pairwise ranking (margin loss)",
+  "seed": 42,
+  "epochs_run": 25,
+  "train_samples": 2500,
+  "val_samples": 600,
+  "test_samples": 600,
+  "validation_independent": true,
+  "best_val_top1_accuracy": 0.97,
+  "test": {
+    "top1_accuracy": 0.9783333333333334,
+    "mean_regret": 0.000644956628481547,
+    "ranking_loss": 0.0032348691033863967
+  },
+  "random_baseline_test": {
+    "top1_accuracy": 0.22666666666666666,
+    "mean_regret": 0.6757169644037883
+  },
+  "beats_random": true,
+  "train_seconds": 594.5,
+  "parameters": 47361
+}

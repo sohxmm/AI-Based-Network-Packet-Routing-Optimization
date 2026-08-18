@@ -1,265 +1,363 @@
+"""Benchmark runner: N independent seeded replications per scenario.
+
+Run from the repository root::
+
+    python -m experiments.runner --scenario all --runs 30
+
+Three structural changes from the previous harness, all required by the audit.
+
+**Independent replication.** Each algorithm now runs its *own* trajectory per
+seed. This is not optional once the simulator is closed-loop: if routing changes
+the network, algorithms cannot share one trajectory, because whichever ran first
+would pollute the state the others observe. Within a seed every algorithm gets
+the identical topology, the identical background traffic and the identical
+demand sequence, so the comparison stays paired at the level that matters — the
+run. Statistics are then computed across runs, not across the autocorrelated
+decisions inside one run.
+
+**Reproducibility.** Every source of randomness is drawn from a per-run
+``random.Random(seed)``. The old harness used the unseeded global ``random``
+module in seven places, so two runs of the same command produced different
+numbers and there was no ``--seed`` flag.
+
+**Honest metrics.** ``diversity_index`` read a ``path`` key that was never
+stored, so it was 0.000 in every committed file; paths are now recorded and
+diversity is a normalised entropy. ``max_path_utilization`` took a max over
+20,000 decisions and was therefore 1.000 for every algorithm in every scenario;
+it is reported as a mean and a p95. A ``warnings`` block is emitted into the
+result JSON whenever an algorithm is degenerate or ran mostly on its fallback,
+so a reader does not have to notice it themselves.
+"""
+
+from __future__ import annotations
+
 import argparse
 import asyncio
 import json
 import logging
 import random
 import time
-import uuid
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Any
 
 import numpy as np
-import scipy.stats as stats
 
-import sys
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from core.models import NetworkState
+from core.paths import max_path_utilization
+from core.qos import QOS_PROFILES, evaluate_path, get_profile
+from core.simulator import NetworkSimulator
+from experiments.scenarios import SCENARIO_NAMES, Scenario, get_scenario
+from experiments.statistics import paired_comparison, path_diversity, summarise
+from routing import ALGORITHM_NAMES, DEGENERACY_EXEMPT, LEARNED_ALGORITHMS, build_router_set
+from routing.learned.forecaster import CongestionPredictor, build_forecast_state
 
-from simulator.network_sim import NetworkSimulator
-from simulator.data_models import RoutingDecision, NetworkState, LinkState
-from router.dijkstra import find_route as dijkstra_route
-from router.bellman_ford import find_route as bellman_ford_route
-from api.state import get_aco_router, get_rl_router, get_gnn_router, get_multi_agent_router
-from ml.congestion_lstm import CongestionPredictor
-from db.database import AsyncSessionLocal
-from db.models import AlgorithmMetric
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 logger = logging.getLogger("benchmark")
 
-ALGORITHMS = ["dijkstra", "bellman_ford", "aco", "gnn", "gnn_predictive", "rl", "rl_predictive", "multi_agent"]
-SCENARIOS = ["normal_traffic", "high_congestion", "link_failures_5_10pct", "congestion_bursts", "large_topology_100_nodes"]
+RESULTS_DIR = Path(__file__).resolve().parent / "results"
 
-# Setup
-aco = get_aco_router()
-rl = get_rl_router()
-gnn = get_gnn_router()
-marl = get_multi_agent_router()
-predictor = CongestionPredictor()
-lstm_path = Path(__file__).resolve().parents[2] / "ml" / "models" / "congestion_lstm.pt"
-if lstm_path.exists():
-    predictor.load(str(lstm_path))
-
-def _build_forecast_state(state: NetworkState, history: list) -> NetworkState | None:
-    current_snapshot = [link.utilization for link in state.links]
-    history.append(current_snapshot)
-    if len(history) > predictor.seq_len:
-        history.pop(0)
-    
-    if len(history) < predictor.seq_len or predictor.model is None:
-        return None
-        
-    predicted_utils = predictor.predict_next(history)
-    new_links = []
-    for i, link in enumerate(state.links):
-        pred_util = predicted_utils[i] if i < len(predicted_utils) else link.utilization
-        pred_util = max(0.0, min(1.0, pred_util))
-        new_links.append(LinkState(
-            source=link.source, target=link.target, base_latency=link.base_latency,
-            bandwidth=link.bandwidth, utilization=pred_util,
-            queue_size=int(pred_util * 100), packet_loss_rate=max(0.0, pred_util - 0.7) * 0.2,
-        ))
-    return NetworkState(nodes=list(state.nodes), links=new_links, timestamp=state.timestamp, step_count=state.step_count)
-
-def route(algo: str, state: NetworkState, src: str, dst: str, history: list) -> RoutingDecision:
-    if algo == "dijkstra": return dijkstra_route(state, src, dst)
-    if algo == "bellman_ford": return bellman_ford_route(state, src, dst)
-    if algo == "aco": return aco.find_path(state, src, dst)
-    if algo == "gnn": return gnn.predict(state, src, dst)
-    if algo == "rl": return rl.predict(state, src, dst)
-    if algo == "multi_agent": return marl.find_route(state, src, dst)
-    
-    fs = _build_forecast_state(state, history) or state
-    if algo == "gnn_predictive": return gnn.predict(fs, src, dst)
-    if algo == "rl_predictive": return rl.predict(fs, src, dst)
-    raise ValueError(f"Unknown algo: {algo}")
-
-def apply_scenario(sim: NetworkSimulator, scenario: str):
-    if scenario == "high_congestion":
-        for _, _, data in sim.graph.edges(data=True):
-            if random.random() < 0.3:
-                data["utilization"] = min(1.0, data["utilization"] + 0.4)
-    elif scenario == "link_failures_5_10pct":
-        for u, v in list(sim.failed_edges.keys()):
-            sim.restore_link(u, v)
-            
-        edges = list(sim.graph.edges())
-        if edges:
-            to_remove = random.sample(edges, k=int(len(edges) * random.uniform(0.05, 0.10)))
-            for u, v in to_remove:
-                sim.inject_failure(u, v)
-    elif scenario == "congestion_bursts":
-        if random.random() < 0.1:
-            edges = list(sim.graph.edges())
-            if edges:
-                sim.congestion_link = sim._edge_key(*random.choice(edges))
-                sim.congestion_remaining = random.randint(3, 10)
+#: Guardrail thresholds, named so the report and the honesty gates agree.
+DEGENERACY_THRESHOLD = 0.95
+FALLBACK_THRESHOLD = 0.50
 
 
-def apply_parameterized_conditions(
-    sim: NetworkSimulator,
-    congestion_profile: str,
-    failure_rate: float,
-    failure_pattern: str,
-):
-    """Apply user-specified network conditions per step.
-
-    This is the parameterized equivalent of apply_scenario().
-
-    Args:
-        sim: The network simulator instance.
-        congestion_profile: "normal" (no extra congestion), "high", or "bursty".
-        failure_rate: Fraction of links to fail (0.0 to 0.30).
-        failure_pattern: "none", "random", or "targeted" (fail highest-degree-node links first).
-    """
-    # ── Congestion ──────────────────────────────────────────────────────────
-    if congestion_profile == "high":
-        for _, _, data in sim.graph.edges(data=True):
-            if random.random() < 0.3:
-                data["utilization"] = min(1.0, data["utilization"] + 0.4)
-    elif congestion_profile == "bursty":
-        if random.random() < 0.1:
-            edges = list(sim.graph.edges())
-            if edges:
-                sim.congestion_link = sim._edge_key(*random.choice(edges))
-                sim.congestion_remaining = random.randint(3, 10)
-
-    # ── Link failures ───────────────────────────────────────────────────────
-    if failure_rate > 0 and failure_pattern != "none":
-        # Restore all previously failed edges first
-        for u, v in list(sim.failed_edges.keys()):
-            sim.restore_link(u, v)
-
-        edges = list(sim.graph.edges())
-        if edges:
-            num_to_fail = max(1, int(len(edges) * failure_rate))
-
-            if failure_pattern == "targeted":
-                # Targeted: fail links connected to the highest-degree nodes first.
-                # Sort edges by the sum of degrees of their endpoints (descending).
-                degrees = dict(sim.graph.degree())
-                edges_by_degree = sorted(
-                    edges,
-                    key=lambda e: degrees.get(e[0], 0) + degrees.get(e[1], 0),
-                    reverse=True,
-                )
-                to_remove = edges_by_degree[:num_to_fail]
-            else:
-                # Random failure
-                to_remove = random.sample(edges, k=min(num_to_fail, len(edges)))
-
-            for u, v in to_remove:
-                try:
-                    sim.inject_failure(u, v)
-                except ValueError:
-                    pass  # Edge already failed or missing
-
-
-def compute_metrics_from_results(
-    results: dict[str, list],
-    algorithms: list[str],
-    n_steps: int,
-    m_pairs: int,
-    scenario_name: str = "custom",
-) -> dict:
-    """Compute aggregate metrics from raw per-decision results.
-
-    Shared by both the fixed-scenario runner and the experiment sandbox.
-    Returns the same shape as the JSON files in benchmark/results/.
-    """
-    import math as _math
-
-    global_metrics: dict[str, Any] = {
-        "scenario": scenario_name,
-        "n_steps": n_steps,
-        "m_pairs": m_pairs,
-        "algorithms": {},
+def _decision_row(
+    algorithm: str,
+    step: int,
+    src: str,
+    dst: str,
+    traffic_class: str,
+    decision,
+    state: NetworkState,
+) -> dict[str, Any]:
+    """One routing decision, flattened for aggregation."""
+    profile = get_profile(traffic_class)
+    evaluation = evaluate_path(state, decision.path, profile)
+    latency = decision.total_latency
+    return {
+        "algorithm": algorithm,
+        "step": step,
+        "src": src,
+        "dst": dst,
+        "traffic_class": traffic_class,
+        # The full path is stored. Not storing it is why diversity_index was
+        # structurally zero in every previously published result.
+        "path": list(decision.path),
+        "path_len": len(decision.path),
+        "latency": latency if np.isfinite(latency) else float("inf"),
+        "avg_utilization": decision.avg_utilization,
+        "max_path_utilization": max_path_utilization(state, decision.path),
+        "success": bool(decision.success),
+        "is_fallback": bool(decision.is_fallback),
+        "qos_feasible": bool(evaluation.feasible),
+        "qos_score": evaluation.score if np.isfinite(evaluation.score) else None,
     }
 
-    dijkstra_res = results.get("dijkstra", [])
-    dijkstra_mean = 0.0
 
-    # First pass: compute dijkstra mean for effect_size_pct
-    if dijkstra_res:
-        d_lats = [r["latency"] for r in dijkstra_res if r["success"] and r["latency"] < float("inf")]
-        dijkstra_mean = float(np.mean(d_lats)) if d_lats else 0.0
+def run_single_replicate(
+    scenario: Scenario,
+    seed: int,
+    n_steps: int,
+    m_pairs: int,
+    algorithms: list[str],
+    predictor: CongestionPredictor | None = None,
+) -> dict[str, list[dict]]:
+    """Run one seeded replicate: an independent trajectory per algorithm."""
+    results: dict[str, list[dict]] = {}
 
-    for algo in algorithms:
-        algo_res = results.get(algo, [])
-        if not algo_res:
-            continue
+    # The demand schedule is generated once from the run seed and replayed for
+    # every algorithm, so any difference between algorithms is caused by their
+    # routing and not by facing different traffic.
+    schedule_rng = random.Random(seed * 7919 + 13)
+    classes = [c.value for c in scenario.traffic_classes]
 
-        latencies = [r["latency"] for r in algo_res if r["success"] and r["latency"] < float("inf")]
-        utils = [r["avg_utilization"] for r in algo_res if r["success"]]
-        fallbacks = sum(1 for r in algo_res if r.get("is_fallback", False))
-        successes = sum(1 for r in algo_res if r["success"])
+    for algorithm in algorithms:
+        rng = random.Random(seed)
+        sim = NetworkSimulator(num_nodes=scenario.num_nodes, seed=seed)
+        routers = build_router_set(seed=seed)
+        router = routers[algorithm]
+        scenario.prepare(sim, rng)
 
-        fallback_rate = fallbacks / len(algo_res) if algo_res else 0
-        success_rate = successes / len(algo_res) if algo_res else 0
+        demand_rng = random.Random(schedule_rng.randint(0, 2**31 - 1))
+        history: list[list[float]] = []
+        rows: list[dict] = []
 
-        mean_lat = float(np.mean(latencies)) if latencies else 0.0
+        for step in range(n_steps):
+            scenario.per_step(sim, rng, step)
+            state = sim.step()
 
-        # Degeneracy check against dijkstra
-        matches_dijkstra = 0
-        if dijkstra_res:
-            for r, dr in zip(algo_res, dijkstra_res):
-                if r["success"] and dr["success"] and r["latency"] == dr["latency"] and r["path_len"] == dr["path_len"]:
-                    matches_dijkstra += 1
-        dijkstra_match_rate = matches_dijkstra / len(algo_res) if algo_res else 0
+            if predictor is not None and predictor.is_trained:
+                history.append([link.utilization for link in state.links])
+                del history[: -predictor.seq_len]
 
-        wilcoxon_p = float("nan")
-        wilcoxon_error = None
-        if algo != "dijkstra" and dijkstra_res:
-            paired_latencies = []
-            paired_d_lats = []
-            for r, dr in zip(algo_res, dijkstra_res):
-                if r["success"] and dr["success"] and r["latency"] < float("inf") and dr["latency"] < float("inf"):
-                    paired_latencies.append(r["latency"])
-                    paired_d_lats.append(dr["latency"])
+            nodes = list(state.nodes)
+            for _ in range(m_pairs):
+                src, dst = demand_rng.sample(nodes, 2)
+                traffic_class = demand_rng.choice(classes)
+                profile = QOS_PROFILES[get_profile(traffic_class).traffic_class]
 
-            if len(paired_latencies) > 0:
-                diffs = np.array(paired_latencies) - np.array(paired_d_lats)
-                if np.all(diffs == 0):
-                    wilcoxon_p = float("nan")
-                else:
-                    try:
-                        _, p = stats.wilcoxon(paired_latencies, paired_d_lats)
-                        wilcoxon_p = float(p)
-                    except Exception as e:
-                        wilcoxon_error = str(e)
-                        wilcoxon_p = -1.0
+                decision = router.find_route(state, src, dst, profile)
+                rows.append(
+                    _decision_row(algorithm, step, src, dst, traffic_class, decision, state)
+                )
 
-        # Effect size: % difference vs Dijkstra
-        if algo == "dijkstra" or dijkstra_mean == 0:
-            effect_size_pct = 0.0
-        else:
-            effect_size_pct = round((mean_lat - dijkstra_mean) / dijkstra_mean * 100, 2)
+                # Closed loop: the decision loads the network the next decision
+                # will observe. This is what the whole redesign is for.
+                if decision.success:
+                    sim.register_flow(decision.path, demand=0.5)
 
-        # Sanitize NaN/Inf for JSON
-        def _safe(v):
-            if isinstance(v, float) and (_math.isnan(v) or _math.isinf(v)):
-                return None
-            return v
+        results[algorithm] = rows
 
-        global_metrics["algorithms"][algo] = {
-            "mean_latency": mean_lat,
-            "median_latency": float(np.median(latencies)) if latencies else 0.0,
-            "p95_latency": float(np.percentile(latencies, 95)) if latencies else 0.0,
-            "p99_latency": float(np.percentile(latencies, 99)) if latencies else 0.0,
-            "util_variance": float(np.var(utils)) if utils else 0.0,
-            "success_rate": success_rate,
-            "fallback_rate": fallback_rate,
-            "dijkstra_match_rate": dijkstra_match_rate,
-            "wilcoxon_p_value": _safe(wilcoxon_p),
-            "wilcoxon_error": wilcoxon_error,
-            "effect_size_pct": effect_size_pct,
+    return results
+
+
+def _per_run_metrics(rows: list[dict]) -> dict[str, float]:
+    """Reduce one algorithm's decisions in one run to a handful of numbers."""
+    if not rows:
+        return {}
+
+    successes = [r for r in rows if r["success"]]
+    latencies = [r["latency"] for r in successes if np.isfinite(r["latency"])]
+    max_utils = [r["max_path_utilization"] for r in successes]
+
+    return {
+        "mean_latency": float(np.mean(latencies)) if latencies else float("nan"),
+        "p95_latency": float(np.percentile(latencies, 95)) if latencies else float("nan"),
+        "success_rate": len(successes) / len(rows),
+        "fallback_rate": sum(1 for r in rows if r["is_fallback"]) / len(rows),
+        "qos_satisfaction_rate": sum(1 for r in rows if r["qos_feasible"]) / len(rows),
+        "mean_path_max_utilization": float(np.mean(max_utils)) if max_utils else float("nan"),
+        "p95_path_max_utilization": (
+            float(np.percentile(max_utils, 95)) if max_utils else float("nan")
+        ),
+        "diversity_index": path_diversity(rows),
+        "mean_hops": float(np.mean([r["path_len"] - 1 for r in successes])) if successes else 0.0,
+    }
+
+
+def _dijkstra_match_rate(rows: list[dict], baseline_rows: list[dict]) -> float:
+    """Fraction of decisions identical to the baseline's, by path."""
+    if not rows or not baseline_rows:
+        return 0.0
+    matches = sum(
+        1
+        for r, b in zip(rows, baseline_rows)
+        if r["success"] and b["success"] and r["path"] == b["path"]
+    )
+    return matches / len(rows)
+
+
+def run_scenario(
+    scenario_name: str,
+    n_runs: int = 30,
+    n_steps: int = 100,
+    m_pairs: int = 20,
+    base_seed: int = 1000,
+    algorithms: list[str] | None = None,
+    persist: bool = False,
+) -> dict:
+    """Run a scenario across independent replications and aggregate."""
+    scenario = get_scenario(scenario_name)
+    algorithms = algorithms or list(ALGORITHM_NAMES)
+    if "dijkstra" not in algorithms:
+        algorithms = ["dijkstra", *algorithms]
+
+    predictor = CongestionPredictor()
+    predictor.load()
+
+    logger.info(
+        "Scenario %s: %d runs x %d steps x %d pairs x %d algorithms = %s decisions",
+        scenario_name,
+        n_runs,
+        n_steps,
+        m_pairs,
+        len(algorithms),
+        f"{n_runs * n_steps * m_pairs * len(algorithms):,}",
+    )
+
+    per_run: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+    match_rates: dict[str, list[float]] = defaultdict(list)
+    scenario_meta: dict = {}
+    topology: dict = {}
+    started = time.time()
+
+    for run in range(n_runs):
+        seed = base_seed + run
+        if run == 0:
+            probe = NetworkSimulator(num_nodes=scenario.num_nodes, seed=seed)
+            scenario_meta = scenario.prepare(probe, random.Random(seed)) or {}
+            topology = probe.topology_stats()
+
+        results = run_single_replicate(
+            scenario, seed, n_steps, m_pairs, algorithms, predictor
+        )
+        baseline_rows = results.get("dijkstra", [])
+
+        for algorithm, rows in results.items():
+            for key, value in _per_run_metrics(rows).items():
+                per_run[algorithm][key].append(value)
+            match_rates[algorithm].append(_dijkstra_match_rate(rows, baseline_rows))
+
+        if (run + 1) % max(1, n_runs // 5) == 0:
+            logger.info("  %d/%d runs complete", run + 1, n_runs)
+
+    elapsed = time.time() - started
+
+    # --- aggregate ------------------------------------------------------
+    baseline_latencies = per_run["dijkstra"]["mean_latency"]
+    algorithms_block: dict[str, dict] = {}
+
+    for algorithm in algorithms:
+        metrics = per_run[algorithm]
+        block: dict[str, Any] = {
+            key: summarise(values)["mean"] for key, values in metrics.items()
         }
+        block["mean_latency_ci"] = summarise(metrics["mean_latency"])
+        block["dijkstra_match_rate"] = float(np.mean(match_rates[algorithm]))
+        if algorithm != "dijkstra":
+            block["comparison_vs_dijkstra"] = paired_comparison(
+                metrics["mean_latency"], baseline_latencies
+            )
+        algorithms_block[algorithm] = block
 
-    return global_metrics
+    warnings = _build_warnings(algorithms_block)
+
+    payload = {
+        "scenario": scenario_name,
+        "description": scenario.description,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "replication": {
+            "n_runs": n_runs,
+            "n_steps": n_steps,
+            "m_pairs": m_pairs,
+            "base_seed": base_seed,
+            "unit_of_replication": "one independently seeded run",
+            "note": (
+                "Each algorithm runs its own closed-loop trajectory per seed with "
+                "an identical topology, background traffic and demand schedule. "
+                "Statistics are computed across runs, never across the "
+                "autocorrelated decisions within one run."
+            ),
+        },
+        "topology": topology,
+        "scenario_config": scenario.as_dict() | {"prepared": scenario_meta},
+        "models_loaded": {
+            name: build_router_set(seed=0)[name].is_trained for name in LEARNED_ALGORITHMS
+        },
+        "forecaster_loaded": predictor.is_trained,
+        "algorithms": algorithms_block,
+        "warnings": warnings,
+        "runtime_seconds": round(elapsed, 1),
+    }
+
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    destination = RESULTS_DIR / f"{scenario_name}.json"
+    destination.write_text(json.dumps(payload, indent=2))
+    logger.info("Wrote %s (%.1fs)", destination, elapsed)
+
+    for warning in warnings:
+        logger.warning("  %s", warning)
+
+    if persist:
+        asyncio.run(_persist_metrics(scenario_name, algorithms_block, n_steps))
+
+    return payload
 
 
-async def run_parameterized_scenario(
+def _build_warnings(algorithms_block: dict[str, dict]) -> list[str]:
+    """Surface degeneracy and fallback problems in the artifact itself."""
+    warnings: list[str] = []
+    for algorithm, metrics in algorithms_block.items():
+        fallback = metrics.get("fallback_rate") or 0.0
+        if algorithm in LEARNED_ALGORITHMS and fallback > FALLBACK_THRESHOLD:
+            warnings.append(
+                f"{algorithm}: {fallback:.0%} of decisions came from the heuristic "
+                f"fallback, not a trained model. This row is a heuristic, not "
+                f"{algorithm}."
+            )
+        match = metrics.get("dijkstra_match_rate") or 0.0
+        if algorithm not in DEGENERACY_EXEMPT and match > DEGENERACY_THRESHOLD:
+            warnings.append(
+                f"{algorithm}: chooses the same path as Dijkstra {match:.0%} of the "
+                f"time, so it is degenerate and adds no information."
+            )
+    return warnings
+
+
+async def _persist_metrics(scenario: str, algorithms_block: dict, n_steps: int) -> None:
+    """Write aggregate metrics to the database (opt-in via --persist)."""
+    import uuid
+
+    from service.db.database import AsyncSessionLocal
+    from service.db.models import AlgorithmMetric
+
+    rows = [
+        AlgorithmMetric(
+            id=str(uuid.uuid4()),
+            algorithm=algorithm,
+            scenario=scenario,
+            window_start_step=0,
+            window_end_step=n_steps,
+            avg_latency=metrics.get("mean_latency"),
+            success_rate=metrics.get("success_rate"),
+            num_decisions=n_steps,
+        )
+        for algorithm, metrics in algorithms_block.items()
+    ]
+    try:
+        async with AsyncSessionLocal() as session:
+            session.add_all(rows)
+            await session.commit()
+        logger.info("Persisted %d AlgorithmMetric rows", len(rows))
+    except Exception as exc:  # noqa: BLE001 - the DB is optional for benchmarks
+        logger.warning("Could not persist benchmark metrics: %s", exc)
+
+
+# ---------------------------------------------------------------------------
+# Parameterized entry point used by the Experiment Sandbox API
+# ---------------------------------------------------------------------------
+def run_parameterized_scenario(
     topology_size: int,
     congestion_profile: str,
     failure_rate: float,
@@ -267,246 +365,115 @@ async def run_parameterized_scenario(
     steps: int,
     pairs_per_step: int,
     algorithms: list[str],
+    traffic_classes: list[str] | None = None,
+    n_runs: int = 3,
+    seed: int = 42,
     on_progress=None,
 ) -> dict:
-    """Run a user-configured benchmark scenario using the verified benchmark engine.
+    """Run a user-configured experiment through the same engine as the fixed set.
 
-    This is the parameterized entry point used by the Experiment Sandbox API.
-    Uses the same routing dispatch, metric computation, and guardrail logic
-    as the fixed scenarios.
-
-    Args:
-        topology_size: Number of nodes (25, 50, or 100).
-        congestion_profile: "normal", "high", or "bursty".
-        failure_rate: Fraction of links to fail per step (0.0-0.30).
-        failure_pattern: "none", "random", or "targeted".
-        steps: Number of simulation steps.
-        pairs_per_step: Source/destination pairs per step.
-        algorithms: Subset of the 8 known algorithms.
-        on_progress: Optional callback(steps_completed, total) for progress reporting.
-
-    Returns:
-        Metrics dict in the same shape as GET /benchmark/results/{scenario}.
+    Synchronous by design: the API dispatches it to a thread pool. It used to be
+    an ``async def`` that ran CPU-bound work directly on the event loop, yielding
+    only every ten steps, which stalled the live WebSocket stream whenever
+    somebody ran an experiment.
     """
-    logger.info(
-        f"--- Running parameterized scenario: {topology_size} nodes, "
-        f"{congestion_profile} congestion, {failure_rate*100:.0f}% {failure_pattern} failures, "
-        f"{steps} steps × {pairs_per_step} pairs ---"
+    from experiments.scenarios import (
+        CongestionBursts,
+        HighCongestion,
+        NormalTraffic,
+        PersistentLinkFailures,
     )
 
-    sim = NetworkSimulator(num_nodes=topology_size, seed=42)
-    results = defaultdict(list)
-    history = []
+    classes = [get_profile(c).traffic_class for c in (traffic_classes or ["best_effort"])]
 
-    for step in range(steps):
-        state = sim.step()
-        apply_parameterized_conditions(sim, congestion_profile, failure_rate, failure_pattern)
-        state = sim.get_state()
+    if congestion_profile == "high":
+        scenario = HighCongestion(
+            name="custom", description="custom", num_nodes=topology_size, traffic_classes=classes
+        )
+    elif congestion_profile == "bursty":
+        scenario = CongestionBursts(
+            name="custom", description="custom", num_nodes=topology_size, traffic_classes=classes
+        )
+    elif failure_pattern != "none" and failure_rate > 0:
+        scenario = PersistentLinkFailures(
+            name="custom",
+            description="custom",
+            num_nodes=topology_size,
+            traffic_classes=classes,
+            failure_fraction=min(0.3, failure_rate),
+        )
+    else:
+        scenario = NormalTraffic(
+            name="custom", description="custom", num_nodes=topology_size, traffic_classes=classes
+        )
 
-        pairs = []
-        node_list = list(state.nodes)
-        for _ in range(pairs_per_step):
-            src, dst = random.sample(node_list, 2)
-            pairs.append((src, dst))
+    per_run: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+    match_rates: dict[str, list[float]] = defaultdict(list)
 
-        for algo in algorithms:
-            for src, dst in pairs:
-                decision = route(algo, state, src, dst, history)
-                res = {
-                    "algorithm": algo,
-                    "step": step,
-                    "src": src,
-                    "dst": dst,
-                    "latency": decision.total_latency,
-                    "path_len": len(decision.path),
-                    "avg_utilization": decision.avg_utilization,
-                    "success": decision.success,
-                    "is_fallback": getattr(decision, "is_fallback", False),
-                }
-
-                max_util = 0.0
-                if decision.path:
-                    for i in range(len(decision.path) - 1):
-                        u, v = decision.path[i], decision.path[i + 1]
-                        for link in state.links:
-                            if (link.source == u and link.target == v) or (link.source == v and link.target == u):
-                                max_util = max(max_util, link.utilization)
-                res["max_path_utilization"] = max_util
-                results[algo].append(res)
-
-        # Report progress
+    for run in range(n_runs):
+        results = run_single_replicate(
+            scenario, seed + run, steps, pairs_per_step, algorithms, None
+        )
+        baseline_rows = results.get("dijkstra", [])
+        for algorithm, rows in results.items():
+            for key, value in _per_run_metrics(rows).items():
+                per_run[algorithm][key].append(value)
+            match_rates[algorithm].append(_dijkstra_match_rate(rows, baseline_rows))
         if on_progress:
-            on_progress(step + 1, steps)
+            on_progress(run + 1, n_runs)
 
-        # Yield control to the event loop periodically so the server stays responsive
-        if step % 10 == 0:
-            await asyncio.sleep(0)
+    baseline = per_run.get("dijkstra", {}).get("mean_latency", [])
+    algorithms_block: dict[str, dict] = {}
+    for algorithm in algorithms:
+        metrics = per_run[algorithm]
+        if not metrics:
+            continue
+        block: dict[str, Any] = {k: summarise(v)["mean"] for k, v in metrics.items()}
+        block["mean_latency_ci"] = summarise(metrics["mean_latency"])
+        block["dijkstra_match_rate"] = float(np.mean(match_rates[algorithm]))
+        if algorithm != "dijkstra" and baseline:
+            block["comparison_vs_dijkstra"] = paired_comparison(
+                metrics["mean_latency"], baseline
+            )
+        algorithms_block[algorithm] = block
 
-    scenario_name = f"custom_{topology_size}n_{congestion_profile}_{failure_pattern}"
-    return compute_metrics_from_results(results, algorithms, steps, pairs_per_step, scenario_name)
-
-
-async def run_scenario(scenario: str, n_steps: int = 1000, m_pairs: int = 20):
-    logger.info(f"--- Running {scenario} ---")
-    nodes = 100 if scenario == "large_topology_100_nodes" else 25
-    sim = NetworkSimulator(num_nodes=nodes, seed=42)
-    
-    results = defaultdict(list)
-    history = []
-    
-    for step in range(n_steps):
-        state = sim.step()
-        apply_scenario(sim, scenario)
-        state = sim.get_state()
-        
-        pairs = []
-        node_list = list(state.nodes)
-        for _ in range(m_pairs):
-            src, dst = random.sample(node_list, 2)
-            pairs.append((src, dst))
-            
-        for algo in ALGORITHMS:
-            for src, dst in pairs:
-                decision = route(algo, state, src, dst, history)
-                # We need dict for json
-                res = {
-                    "algorithm": algo,
-                    "step": step,
-                    "src": src,
-                    "dst": dst,
-                    "latency": decision.total_latency,
-                    "path_len": len(decision.path),
-                    "avg_utilization": decision.avg_utilization,
-                    "success": decision.success,
-                    "is_fallback": getattr(decision, "is_fallback", False)
-                }
-                
-                # Compute max link utilization on path
-                max_util = 0.0
-                if decision.path:
-                    for i in range(len(decision.path)-1):
-                        u, v = decision.path[i], decision.path[i+1]
-                        for link in state.links:
-                            if (link.source == u and link.target == v) or (link.source == v and link.target == u):
-                                max_util = max(max_util, link.utilization)
-                res["max_path_utilization"] = max_util
-                results[algo].append(res)
-                
-    # Save raw results
-    out_dir = Path(__file__).resolve().parent / "results"
-    out_dir.mkdir(exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_file = out_dir / f"{scenario}_{ts}.json"
-    
-    global_metrics = {
-        "scenario": scenario,
-        "n_steps": n_steps,
-        "m_pairs": m_pairs,
-        "algorithms": {}
+    return {
+        "scenario": f"custom_{topology_size}n_{congestion_profile}_{failure_pattern}",
+        "description": "User-configured experiment",
+        "replication": {"n_runs": n_runs, "n_steps": steps, "m_pairs": pairs_per_step},
+        "algorithms": algorithms_block,
+        "warnings": _build_warnings(algorithms_block),
     }
-    
-    # DB models
-    db_metrics = []
-    
-    for algo in ALGORITHMS:
-        algo_res = results[algo]
-        latencies = [r["latency"] for r in algo_res if r["success"] and r["latency"] < float('inf')]
-        utils = [r["avg_utilization"] for r in algo_res if r["success"]]
-        fallbacks = sum(1 for r in algo_res if r["is_fallback"])
-        successes = sum(1 for r in algo_res if r["success"])
-        
-        fallback_rate = fallbacks / len(algo_res) if algo_res else 0
-        success_rate = successes / len(algo_res) if algo_res else 0
-        
-        # Path diversity (unique paths / total paths)
-        paths = [str(r.get("path", [])) for r in algo_res if r["success"]]
-        diversity = len(set(paths)) / len(paths) if paths else 0
-        
-        mean_lat = float(np.mean(latencies)) if latencies else 0.0
-        
-        # Degeneracy check against dijkstra
-        dijkstra_res = results["dijkstra"]
-        matches_dijkstra = 0
-        for r, dr in zip(algo_res, dijkstra_res):
-            if r["success"] and dr["success"] and r["latency"] == dr["latency"] and r["path_len"] == dr["path_len"]:
-                matches_dijkstra += 1
-        dijkstra_match_rate = matches_dijkstra / len(algo_res) if algo_res else 0
-        
-        wilcoxon_p = float("nan")
-        wilcoxon_error = None
-        if algo != "dijkstra":
-            paired_latencies = []
-            paired_d_lats = []
-            for r, dr in zip(algo_res, dijkstra_res):
-                if r["success"] and dr["success"] and r["latency"] < float('inf') and dr["latency"] < float('inf'):
-                    paired_latencies.append(r["latency"])
-                    paired_d_lats.append(dr["latency"])
-                    
-            if len(paired_latencies) > 0:
-                print(f"[DEBUG] {scenario} {algo} vs dijkstra: paired lengths = {len(paired_latencies)} (original algo={len(latencies)}, successes={successes})")
-                diffs = np.array(paired_latencies) - np.array(paired_d_lats)
-                if np.all(diffs == 0):
-                    wilcoxon_p = float("nan") # genuine tie
-                else:
-                    try:
-                        _, p = stats.wilcoxon(paired_latencies, paired_d_lats)
-                        wilcoxon_p = float(p)
-                    except Exception as e:
-                        wilcoxon_error = str(e)
-                        wilcoxon_p = -1.0 # use -1.0 to indicate error instead of NaN tie
-                    
-        global_metrics["algorithms"][algo] = {
-            "mean_latency": mean_lat,
-            "median_latency": float(np.median(latencies)) if latencies else 0.0,
-            "p95_latency": float(np.percentile(latencies, 95)) if latencies else 0.0,
-            "p99_latency": float(np.percentile(latencies, 99)) if latencies else 0.0,
-            "util_variance": float(np.var(utils)) if utils else 0.0,
-            "max_path_utilization": float(np.max([r["max_path_utilization"] for r in algo_res])) if algo_res else 0.0,
-            "diversity_index": diversity,
-            "success_rate": success_rate,
-            "fallback_rate": fallback_rate,
-            "dijkstra_match_rate": dijkstra_match_rate,
-            "wilcoxon_p_value": wilcoxon_p,
-            "wilcoxon_error": wilcoxon_error
-        }
-        
-        db_metrics.append(AlgorithmMetric(
-            id=str(uuid.uuid4()),
-            algorithm=algo,
-            window_start_step=0,
-            window_end_step=n_steps,
-            avg_latency=mean_lat,
-            success_rate=success_rate,
-            num_decisions=len(algo_res)
-        ))
-        
-    with open(out_file, "w") as f:
-        json.dump(global_metrics, f, indent=2)
-        
-    # async with AsyncSessionLocal() as session:
-    #     session.add_all(db_metrics)
-    #     await session.commit()
-        
-    logger.info(f"Saved {scenario} to {out_file}")
 
-from db.models import Base
-from db.database import engine
 
-async def init_db():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-async def run_all():
-    # await init_db()
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--scenario", type=str, default="all")
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Run the routing benchmark.")
+    parser.add_argument("--scenario", default="all", help=f"one of {SCENARIO_NAMES} or 'all'")
+    parser.add_argument("--runs", type=int, default=30, help="independent seeded replications")
+    parser.add_argument("--steps", type=int, default=100)
+    parser.add_argument("--pairs", type=int, default=20)
+    parser.add_argument("--seed", type=int, default=1000)
+    parser.add_argument("--algorithms", nargs="*", default=None)
+    parser.add_argument("--persist", action="store_true", help="write metrics to the database")
     args = parser.parse_args()
-    
-    scenarios_to_run = SCENARIOS if args.scenario == "all" else [args.scenario]
-    for sc in scenarios_to_run:
-        await run_scenario(sc)
+
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s", datefmt="%H:%M:%S"
+    )
+    logging.getLogger("core.simulator").setLevel(logging.WARNING)
+
+    targets = SCENARIO_NAMES if args.scenario == "all" else [args.scenario]
+    for name in targets:
+        run_scenario(
+            name,
+            n_runs=args.runs,
+            n_steps=args.steps,
+            m_pairs=args.pairs,
+            base_seed=args.seed,
+            algorithms=args.algorithms,
+            persist=args.persist,
+        )
+
 
 if __name__ == "__main__":
-    logger.info("Starting benchmark...")
-    asyncio.run(run_all())
-
+    main()
