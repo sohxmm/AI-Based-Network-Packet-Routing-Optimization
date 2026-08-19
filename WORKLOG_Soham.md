@@ -1,6 +1,6 @@
 # Internship Work Log
 
-Total hours: 163
+Total hours: 169
 
 ## 09/06/2026
 
@@ -504,3 +504,20 @@ Tasks:
 
 Status:
 - Every model beats a stated baseline on its own task, and every scenario stresses what its name claims
+
+## 19/08/2026
+
+Hours: 6.0
+
+Tasks:
+- Rebuilt the service layer around the new packages
+- Split the monolithic route module into `network`, `simulator`, `metrics`, `benchmark`, `experiments`, `websocket` and `dispatch`
+- The simulator loop now survives exceptions, logs them with a stack trace, backs off after ten consecutive failures, and `/health` reports the age of the last successful tick. It previously caught only `CancelledError`, so any other exception killed the task while the app stayed up and `/health` kept returning `{"status": "ok"}` with the dashboard frozen
+- Added `GET /health/models`, which answers "is the AI actually running?" in one request and reports file presence separately from load success
+- Made the network source swappable at runtime, and made the benchmark harness build its own isolated router set. Running a sandbox experiment used to permanently shift the live dashboard's ACO pheromone table
+- Capped `/metrics/history`, which took an unbounded limit
+- Added hard caps to the experiment sandbox that reject rather than clamp, because silently clamping returns results that do not match what was asked for
+- Made snapshot writes fire-and-forget and every tenth tick; they were awaited inside the 1 Hz loop, so a slow database stalled the simulation itself, at roughly 860 MB/day unbounded
+
+Status:
+- A dead background loop is now externally detectable instead of hiding behind a green check

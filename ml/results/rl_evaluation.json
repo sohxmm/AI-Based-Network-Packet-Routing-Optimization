@@ -1,0 +1,52 @@
+{
+  "n_episodes": 3,
+  "seed": 1041,
+  "policies": {
+    "random": {
+      "name": "random",
+      "mean": -47.2315058685297,
+      "std": 2.1232546152890324,
+      "ci95_low": -49.63419465097237,
+      "ci95_high": -44.828817086087035,
+      "n_episodes": 3
+    },
+    "greedy_first_candidate": {
+      "name": "greedy_first_candidate",
+      "mean": -34.105221353332546,
+      "std": 1.9733601527707274,
+      "ci95_low": -36.33828858353666,
+      "ci95_high": -31.872154123128436,
+      "n_episodes": 3
+    },
+    "oracle": {
+      "name": "oracle",
+      "mean": -33.099438093184695,
+      "std": 2.1628010646061706,
+      "ci95_low": -35.5468778958185,
+      "ci95_high": -30.65199829055089,
+      "n_episodes": 3
+    },
+    "ppo": {
+      "name": "ppo",
+      "mean": -34.105221353332546,
+      "std": 1.9733601527707274,
+      "ci95_low": -36.33828858353666,
+      "ci95_high": -31.872154123128436,
+      "n_episodes": 3
+    }
+  },
+  "normalized_scores": {
+    "random": 0.0,
+    "greedy_first_candidate": 0.9288297171980343,
+    "oracle": 1.0,
+    "ppo": 0.9288297171980343
+  },
+  "interpretation": "normalized = (policy - random) / (oracle - random). 0.0 means no better than random; 1.0 means it matches the greedy oracle.",
+  "training": {
+    "timesteps": 4096,
+    "seed": 42,
+    "train_seconds": 14.6,
+    "obs_dim": 286,
+    "num_nodes": 25
+  }
+}
