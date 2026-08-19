@@ -1,256 +1,380 @@
 # Routing Algorithms
 
-The system implements multiple routing algorithms (including advanced ML-based and predictive approaches), each operating on the same `NetworkState` and producing a `RoutingDecision`. All algorithms share a common **congestion-aware edge weight formula**:
-
-```
-weight = base_latency × (1 + 4 × utilization²)
-```
-
-This makes highly-utilized links quadratically more expensive, encouraging all algorithms to prefer less congested paths.
+Eight strategies, one interface, one cost function. Every one of them takes a
+`NetworkState`, a source, a destination and a `QoSProfile`, and returns a
+`RoutingDecision`.
 
 ---
 
-## 1. Algorithm Summary
+## 1. The shared foundations
 
-| Algorithm      | Time Complexity  | Type              | Strengths                             | File                          |
-|----------------|-------------------|-------------------|---------------------------------------|-------------------------------|
-| Dijkstra       | O((V+E) log V)    | Greedy / Optimal  | Fastest, guaranteed optimal for non-negative weights | `router/dijkstra.py`   |
-| Bellman-Ford   | O(VE)              | Dynamic Programming| Handles negative weights, detects cycles | `router/bellman_ford.py` |
-| ACO            | O(iterations × ants × V) | Metaheuristic | Multi-path exploration, adaptive | `router/aco.py`              |
-| RL (PPO)       | O(inference)       | Learned Policy    | Adapts to traffic patterns over time  | `router/rl_agent.py`         |
-| GNN            | O(inference)       | Learned Policy    | Understands topology, balances load   | `router/gnn_router.py`       |
-| MARL           | O(inference)       | Multi-Agent       | Distributed routing across regions    | `router/multi_agent_router.py`|
-| Predictive     | O(LSTM + inference)| Forecasting       | Avoids congestion before it happens   | `api/routers/network.py`     |
-
-RL and GNN might provide better results for larger networks with more routers.
----
-
-## 2. Dijkstra's Algorithm
-
-**File**: `backend/router/dijkstra.py`
-
-### How It Works
-
-1. Build an adjacency list from the current `NetworkState` with congestion-aware weights
-2. Initialize a min-heap with the source node at cost 0
-3. Repeatedly expand the cheapest unvisited node
-4. When a neighbor has a lower cost via the current node, update it and push to the heap
-5. Stop when the destination is reached
-6. Reconstruct the path by following parent pointers backward
-
-### Key Properties
-
-- **Optimal**: Always finds the minimum-cost path for non-negative weights
-- **Efficient**: Uses a binary heap for O((V+E) log V) time complexity
-- **Deterministic**: Same input always produces the same output
-- **Limitation**: Does not explore alternative paths — only returns the single best
-
-### Code Flow
+### 1.1 The cost function
 
 ```python
-find_route(state, src, dst) → RoutingDecision
-├── _build_adjacency(state)              # Build weighted adjacency list
-├── Dijkstra loop (heap-based)           # Find shortest path
-├── _reconstruct_path(previous, src, dst) # Backtrack through parents
-└── Return RoutingDecision with path and cost
+# core/cost.py — the only definition in the repository
+CONGESTION_EXPONENT = 2
+CONGESTION_PENALTY_FACTOR = 4.0
+
+def link_cost(link):
+    return link.base_latency * (1 + 4 * link.utilization ** 2)
 ```
 
----
+Quadratic in utilisation, so a link at 80% load costs 3.6x its idle latency and
+a link at 100% costs 5x. This is what makes every algorithm congestion-aware.
 
-## 3. Bellman-Ford Algorithm
+This formula previously existed at **fourteen sites across eleven files**, with
+three different exponents and two different penalty factors among them. That is
+not a style problem: the RL agent was trained against one version of the cost and
+served against another, so its policy was optimised for a network that did not
+exist at inference time. There is now exactly one definition and everything
+imports it.
 
-**File**: `backend/router/bellman_ford.py`
-
-### How It Works
-
-1. Build a directed edge list (each undirected link → two directed edges)
-2. Initialize all distances to infinity, source to 0
-3. Relax all edges V-1 times
-4. Early termination if no distances change in a pass
-5. Extra pass to detect negative-weight cycles (safety check)
-6. Reconstruct path via predecessor pointers
-
-### Key Properties
-
-- **Correct for negative weights**: Although this project uses non-negative congestion costs, the algorithm is included for educational completeness
-- **Cycle detection**: Built-in negative cycle check (returns failure if detected)
-- **Slower**: O(VE) vs Dijkstra's O((V+E) log V)
-- **Use case**: Models distributed routing where nodes only know neighbors (distance-vector routing)
-
-### Why Include It?
-
-Bellman-Ford models how real-world distributed routing protocols (like RIP) work — routers repeatedly share distance vectors with neighbors. Including it alongside Dijkstra demonstrates the performance trade-off and validates that both produce identical paths in this non-negative-weight network.
-
----
-
-## 4. Ant Colony Optimization (ACO)
-
-**File**: `backend/router/aco.py`
-
-### How It Works
-
-1. Initialize pheromone levels on all links to 1.0
-2. For each iteration:
-   a. Each ant constructs a path from source to destination
-   b. Next-hop selection is probabilistic, weighted by pheromone and inverse cost
-   c. After all ants complete, evaporate pheromone on all edges
-   d. Deposit new pheromone on paths proportional to path quality (Q/cost)
-3. Track the best path found across all iterations and ants
-
-### Configuration Parameters
-
-| Parameter         | Default | Description                                       |
-|-------------------|---------|---------------------------------------------------|
-| `alpha`           | 1.0     | Pheromone influence exponent                      |
-| `beta`            | 2.0     | Heuristic (cost) influence exponent               |
-| `evaporation_rate`| 0.2     | Fraction of pheromone that evaporates per iteration|
-| `Q`               | 100     | Pheromone deposit constant                        |
-| `n_ants`          | 20      | Number of ants per iteration                      |
-| `n_iterations`    | 30      | Number of ACO iterations                          |
-
-### Next-Hop Selection Formula
-
-For ant at node `i`, probability of moving to neighbor `j`:
-
-```
-          τ(i,j)^α  ×  η(i,j)^β
-P(j) = ─────────────────────────────
-        Σ_k  τ(i,k)^α  ×  η(i,k)^β
-```
-
-Where:
-- `τ(i,j)` = pheromone level on edge (i,j)
-- `η(i,j)` = 1 / cost(i,j) — heuristic desirability
-- `α` controls pheromone influence
-- `β` controls cost influence
-
-### Key Properties
-
-- **Exploratory**: Discovers multiple alternative paths
-- **Adaptive**: Pheromone evaporation allows the algorithm to adapt when traffic changes
-- **Stochastic**: May return different paths on different runs (seeded with `Random(42)` for reproducibility in testing)
-- **Good for multi-path routing**: In a real system, could split traffic across multiple paths
-
----
-
-## 5. Reinforcement Learning (PPO)
-
-**File**: `backend/router/rl_agent.py`
-
-### How It Works
-
-The RL router uses a trained PPO (Proximal Policy Optimization) agent to select the best path from a set of candidate paths.
-
-1. Find up to K=5 candidate paths between source and destination (BFS-based)
-2. Build a flat observation vector from the current network state
-3. Feed the observation to the PPO model for deterministic inference
-4. Map the model's discrete action to a candidate path index
-5. Return the selected path as a `RoutingDecision`
-
-### Model Architecture
-
-- **Policy**: MlpPolicy (2 hidden layers of 64 units each)
-- **Algorithm**: PPO (Proximal Policy Optimization)
-- **Framework**: Stable-Baselines3 2.3.2
-
-### Observation Space
-
-Flat vector of shape `(n_links × 4,)`, normalized to [0, 1]:
-
-| Feature Index | Feature                     | Normalization          |
-|---------------|-----------------------------|------------------------|
-| i*4 + 0       | Link utilization            | Already 0–1            |
-| i*4 + 1       | Queue size                  | Divided by 100         |
-| i*4 + 2       | Packet loss rate            | Divided by 0.06        |
-| i*4 + 3       | Base latency                | Divided by 25          |
-
-### Fallback Behavior
-
-If the PPO model file (`backend/ml/models/rl_router_final.zip`) is not found:
-- The router falls back to a **congestion-aware heuristic** that selects the candidate path with the lowest total congestion-adjusted cost
-- This ensures the API never fails, even before training
-- A warning is printed to console but no error is raised
-
-### Model Loading
+### 1.2 The `Router` contract
 
 ```python
-router = RLRouter()
-router.try_load_model()           # Returns False if model missing
-decision = router.predict(state, "R1", "R5")
+class Router(Protocol):
+    name: str
+    def find_route(
+        self, state: NetworkState, src: str, dst: str,
+        profile: QoSProfile | None = None,
+    ) -> RoutingDecision: ...
 ```
 
----
+Before this there were three different method names across six routers
+(`find_route`, `predict`, `route`), so every call site needed a dispatch table
+and adding an algorithm meant editing five files.
 
-## 6. Graph Neural Network (GNN)
+### 1.3 The candidate set
 
-**File**: `backend/router/gnn_router.py`
-
-### How It Works
-The GNN router uses a PyTorch-based Graph Neural Network that inherently understands the network topology. It processes the current network state to predict path qualities, focusing on minimizing congestion and maximizing load balancing.
-
----
-
-## 7. Multi-Agent Reinforcement Learning (MARL)
-
-**File**: `backend/router/multi_agent_router.py`
-
-### How It Works
-Instead of a single global agent, the network is partitioned into distinct regions, each governed by its own PPO agent. This decentralized approach (using naive self-play for training) models distributed routing, where regions cooperate implicitly via a shared global reward signal.
-
----
-
-## 8. Predictive Routing Mode
-
-**File**: Implemented via API (`backend/api/routers/network.py`) and Benchmark (`backend/benchmark/run_benchmark.py`)
-
-### How It Works
-Predictive routing is not a standalone pathfinding algorithm; rather, it is a mode that enhances the RL or GNN routers.
-1. The **LSTM Congestion Predictor** takes historical utilization data and forecasts the *future* network state.
-2. This predicted state is fed to the RL (`rl_predictive`) or GNN (`gnn_predictive`) router.
-3. The router makes a decision based on the anticipated congestion, avoiding links before they actually become congested.
-
----
-
-## 9. Algorithm Comparison
-
-All four algorithms are compared via `POST /network/route/compare`:
-
-```
-Typical results (step 150, R1 → R5):
-
-Algorithm      Path              Latency    Utilization
-─────────────────────────────────────────────────────────
-Dijkstra       R1→R3→R5          34.7 ms    0.35
-Bellman-Ford   R1→R3→R5          34.7 ms    0.35
-ACO            R1→R4→R7→R5       52.1 ms    0.28
-RL (PPO)       R1→R3→R5          34.7 ms    0.35
-GNN            R1→R2→R4→R5       42.0 ms    0.22
-MARL           R1→R3→R5          34.7 ms    0.35
-Predictive     R1→R4→R7→R5       50.1 ms    0.20
+```python
+core.paths.candidate_paths(state, src, dst, k=5, weighted=True)
 ```
 
-### Observations
+k-shortest paths under the **congestion-weighted** metric. Every router except
+Bellman-Ford chooses from this set.
 
-- **Dijkstra and Bellman-Ford** typically produce identical paths (both find the true shortest path in non-negative networks)
-- **ACO** sometimes finds alternative paths that avoid high-utilization links, trading latency for resilience
-- **RL** often matches Dijkstra when well-trained, but may choose different paths under heavy congestion due to its learned policy
+`weighted=True` is the default, and it matters: training generated candidates one
+way and serving generated them another, so the model was ranking a different set
+of paths at inference than it had ever been trained on — a textbook train/serve
+skew, hidden behind a boolean default.
 
----
+**This is also a hard ceiling.** Nothing can select a path outside the candidate
+set, including the oracle. Every learned "improvement" is a re-ranking of a
+classically generated set.
 
-## 10. Common Data Models
-
-All algorithms return a `RoutingDecision` dataclass:
+### 1.4 `RoutingDecision`
 
 ```python
 @dataclass
 class RoutingDecision:
-    source: str            # e.g., "R1"
-    destination: str       # e.g., "R5"
-    path: List[str]        # e.g., ["R1", "R3", "R5"]
-    algorithm: str         # e.g., "dijkstra"
-    total_latency: float   # Total path cost in ms
-    avg_utilization: float # Mean utilization of path links
-    success: bool          # True if a path was found
+    source: str
+    destination: str
+    path: list[str]
+    algorithm: str
+    total_latency: float
+    avg_utilization: float
+    success: bool
+    is_fallback: bool = False        # did a model decide this, or the heuristic?
+    diagnostics: dict = field(default_factory=dict)
 ```
 
+`is_fallback` is part of the **domain model**, not an API detail. A learned
+router that quietly served a heuristic answer has to be distinguishable from one
+that ran its model, everywhere in the system — in the API response, in the
+benchmark aggregation, in the honesty gates and in the dashboard.
+
 Failed routes return `path=[]`, `total_latency=inf`, `success=False`.
+
+---
+
+## 2. The eight algorithms
+
+| Algorithm | File | Type | Role in the comparison |
+|---|---|---|---|
+| Dijkstra | `routing/classical/dijkstra.py` | Exact | The optimum for additive costs |
+| Bellman-Ford | `routing/classical/bellman_ford.py` | Exact | Correctness cross-check |
+| Constrained | `routing/classical/constrained.py` | Exact, filtered | **The honest QoS ceiling** |
+| ACO | `routing/heuristic/aco.py` | Metaheuristic | Stochastic explorer |
+| GNN | `routing/learned/gnn.py` | Learned ranker | Size-agnostic learned router |
+| RL (PPO) | `routing/learned/rl.py` | Learned policy | Sequential decision maker |
+| Multi-agent | `routing/learned/multi_agent.py` | CTDE | Decentralised routing |
+| Random | `routing/random_baseline.py` | Uniform | **The honest floor** |
+
+The floor and the ceiling are first-class rows in the results table, not
+footnotes. Without a floor you cannot tell whether a model learned anything;
+without a ceiling you cannot tell whether the remaining gap is worth chasing.
+
+---
+
+## 3. Dijkstra
+
+Binary-heap shortest path over the congestion-weighted graph. `O((V+E) log V)`.
+
+**It is optimal, and that is the single most important fact in this project.**
+For non-negative additive edge costs Dijkstra returns the minimum-cost path — a
+theorem, not a heuristic. Both conditions hold for `link_cost`: it is positive
+for all utilisations, and a path's cost is the sum of its links'.
+
+The consequence is that **no algorithm here can beat Dijkstra on best-effort
+traffic.** Not with more training, not with a better architecture. The benchmark
+confirms this: Dijkstra, Bellman-Ford, constrained, the GNN and PPO are
+statistically indistinguishable on every best-effort scenario, with p > 0.5 and
+negligible Cliff's delta throughout.
+
+This is why the project's interesting regime is QoS constraints (§5), and why
+`LEARNING_GUIDE.md` §18.1 spends several pages on it.
+
+---
+
+## 4. Bellman-Ford
+
+Edge relaxation, `V-1` passes, with early termination and a negative-cycle check.
+`O(VE)`.
+
+**It is not an independent baseline, and it is not presented as one.** With
+identical non-negative weights, Dijkstra and Bellman-Ford are both exact, so they
+necessarily return the same cost. The measured `dijkstra_match_rate` is 1.00 in
+every scenario, exactly as the theory requires.
+
+It is here for two honest reasons: as a correctness cross-check on the cost
+computation, and because it models how distance-vector protocols (RIP) actually
+work — routers exchanging distance vectors with neighbours rather than computing
+a global shortest path.
+
+It is exempt from the degeneracy guardrail. Flagging Bellman-Ford for agreeing
+with Dijkstra would be flagging it for being correct.
+
+---
+
+## 5. Constrained k-shortest paths
+
+**This is the honest ceiling, and the most important classical algorithm here
+after Dijkstra.**
+
+```
+1. Generate k candidate paths (congestion-weighted k-shortest)
+2. Filter to those satisfying every hard constraint of the traffic class
+3. Score the survivors by the class's weighted objective
+4. Return the best; if none is feasible, return the least-infeasible
+```
+
+Under additive costs it agrees with Dijkstra. Under **QoS constraints** it does
+not, and that difference is the entire point.
+
+Dijkstra minimises a sum and is constraint-blind: it will happily return a path
+whose bottleneck link is at 95% utilisation for a class whose hard limit is 70%.
+The constrained router will not.
+
+The module also exposes `qos_oracle()` and `qos_floor()` — the best and worst
+feasible path in the candidate set — so a learned router's QoS performance can be
+normalised the same way the PPO agent's return is.
+
+### Measured result
+
+Per-class QoS satisfaction on `qos_mixed_traffic`, 15 runs:
+
+| Algorithm | emergency | interactive | gaming | bulk | best-effort |
+|---|---|---|---|---|---|
+| **Constrained** | **92.4%** | **97.1%** | **98.1%** | **99.9%** | 100% |
+| GNN | 82.3% | 94.2% | 96.2% | 99.3% | 100% |
+| Dijkstra | 84.0% | 92.7% | 95.1% | 99.2% | 100% |
+| RL (PPO) | 78.5% | 90.8% | 92.8% | 98.6% | 100% |
+| Random | 61.7% | 80.8% | 87.0% | 96.0% | 100% |
+
+It wins every class, and it pays 1.6% in mean latency to do so — the trade you
+want a constraint-aware router to make. No learned router beats it, and the
+reason is that none of them was ever trained to satisfy a constraint.
+
+---
+
+## 6. Ant Colony Optimization
+
+Probabilistic path construction with pheromone reinforcement.
+
+```
+        tau(i,j)^alpha  x  eta(i,j)^beta
+P(j) = ----------------------------------
+        sum_k tau(i,k)^alpha x eta(i,k)^beta
+```
+
+`tau` is pheromone on the edge, `eta = 1/cost` is heuristic desirability.
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `alpha` | 1.0 | Pheromone influence |
+| `beta` | 2.0 | Cost influence |
+| `evaporation_rate` | 0.2 | Fraction evaporating per iteration |
+| `Q` | 100 | Deposit constant |
+| `n_ants` | 20 | Ants per iteration |
+| `n_iterations` | 30 | Iterations per query |
+
+Seeded (`Random(42)`) so results reproduce.
+
+### Measured result, stated with its budget
+
+ACO lands 62% worse than Dijkstra, with `diversity_index = 0.70` against
+Dijkstra's 0.27 and 4.24 mean hops against 2.70. Those diagnostics say something
+specific: it is exploring widely and has **not converged**. ACO is an anytime
+algorithm whose quality is a function of iteration count, and 40 benchmark steps
+is not enough for the pheromone distribution to sharpen.
+
+At 100 nodes it degrades further — 8.60 hops against an optimum of 4.37, and
+diversity 0.86, which is essentially random.
+
+The honest statement is *"ACO is not competitive at this iteration budget"*, and
+the budget belongs in the sentence.
+
+The pheromone table is stateful and persists across requests, which is why
+`service/state.py` keeps routers as singletons and why the benchmark harness
+builds its **own** isolated router set — a sandbox experiment used to permanently
+shift the live dashboard's pheromones.
+
+---
+
+## 7. GNN router
+
+Ranks the candidate set with a 3-layer message-passing network. Full detail in
+[`07_ML_AND_AI.md`](07_ML_AND_AI.md) §1.
+
+Two things worth knowing from a routing perspective:
+
+**It converges to Dijkstra on best-effort traffic** — 96–98% path agreement —
+and the benchmark declares it. That is the correct outcome (§3), and the
+declaration is enforced by an honesty gate.
+
+**It is the only learned router that survives a change of topology size.** On the
+100-node scenario it runs with **zero fallbacks**, because message passing does
+not depend on node count. The same weights, trained on 25 nodes, apply
+unmodified.
+
+A loading bug worth remembering: `load_model` assigned `self._model` *before*
+`load_state_dict`, so a failed load left an untrained model reporting
+`is_trained=True` and quietly serving random weights. The model is now built into
+a local variable and assigned only on success.
+
+---
+
+## 8. RL (PPO) router
+
+Selects one of five candidate paths from a 286-dimensional observation. Full
+detail in [`07_ML_AND_AI.md`](07_ML_AND_AI.md) §2.
+
+The routing-relevant limitation is the **fixed observation width**. The vector is
+sized `links x 4 + nodes x 2 + K_PATHS x 6 + QOS_FEATS` for a specific topology,
+so a checkpoint trained on 25 nodes / 50 links cannot run on 100 nodes, or on a
+topology with links removed.
+
+`_observation_fits()` compares the built observation's width against
+`model.observation_space.shape[0]`. On a mismatch it falls back to the heuristic,
+sets `is_fallback=True`, and logs a WARNING naming the retrain command.
+
+This fires for real: `fallback_rate` is **1.00** in both
+`large_topology_100_nodes` and `link_failures_persistent`. The results files say
+so in words, the report tables dagger the row, and an honesty gate fails CI if
+the declaration ever disappears.
+
+The old code path returned the same heuristic answer under the label `rl`,
+with a latency number that looked competitive — and in `link_failures_persistent`
+it was *better than Dijkstra's*. Someone would have written "the RL agent
+outperforms Dijkstra under link failures". That sentence would have been about
+five lines of Python.
+
+---
+
+## 9. Multi-agent (CTDE) router
+
+Hop-by-hop routing, one PPO policy per region, each seeing only its own region's
+113 local features. Control passes between agents as the packet crosses region
+boundaries. Full detail in [`07_ML_AND_AI.md`](07_ML_AND_AI.md) §4.
+
+`ensure_partition()` re-derives regions from the **live** topology whenever the
+node set changes, rather than assuming the partition it was trained with.
+
+The result is instructive: every region beats random on its own local objective,
+and the composed end-to-end path is 61% worse than Dijkstra's. No agent optimises
+end-to-end latency because no agent can see an end-to-end path. That is the price
+of decentralised execution, and it is stated in the model card so it cannot be
+quietly forgotten.
+
+---
+
+## 10. Random baseline
+
+Uniform choice from the candidate set. **The floor.**
+
+It exists because "the GNN gets 56.7 ms" means nothing on its own. Random gets
+84.4 ms and Dijkstra gets 56.7 ms, so the interesting statement is that the GNN
+has closed essentially all of that gap. Without the floor in the same table, a
+reader has to take the claim on trust.
+
+It also calibrates the statistics. Random against Dijkstra gives
+`Cliff's delta = 1.0` and `p = 6.1e-05` — the smallest a 15-pair Wilcoxon can
+produce — which shows the test detects real differences easily. That is what
+makes its *failure* to detect one among the top five informative rather than
+merely underpowered.
+
+---
+
+## 11. Predictive mode
+
+Not an algorithm. A **mode** that swaps the state a router sees.
+
+```
+LSTM forecast  ->  build_forecast_state()  ->  gnn / rl routes on the forecast
+```
+
+`build_forecast_state()` returns `None` when no forecast is available. The
+previous version ended `... or state`, so a missing forecaster silently meant
+"route on the present while calling it a forecast" — and since the LSTM artifact
+had never existed, `gnn_predictive` was **byte-identical** to `gnn` and
+`rl_predictive` to `rl` in every published result. Two of eight benchmarked
+"algorithms" were duplicate columns.
+
+A permanent honesty gate fails CI if they ever match again.
+
+---
+
+## 12. Failover and convergence
+
+`routing/failover.py` measures something no latency column can: how many ticks a
+router needs to restore a **QoS-satisfying** route after a link on an active flow
+is cut.
+
+```python
+measure_convergence(simulator, router, src, dst, failed_link, traffic_class)
+# -> {"converged": bool, "convergence_steps": int | None,
+#     "latency_before": float, "latency_after": float, ...}
+```
+
+It returns latency before and after alongside the step count, so a
+fast-but-worse recovery is distinguishable from a slow-but-better one — a
+distinction a single "convergence time" destroys.
+
+`FailoverMonitor` runs the same logic continuously against watched flows and
+emits `RerouteEvent`s to the dashboard. It detects breakage by checking
+`path_is_intact()` **and** re-evaluating the QoS profile: a path whose links all
+still exist but whose bottleneck has crossed the class's threshold is broken *for
+that class*, even though every link is up.
+
+---
+
+## 13. Comparing them
+
+```bash
+curl -X POST http://localhost:8000/network/route/compare \
+     -H "Content-Type: application/json" \
+     -d '{"source": "R1", "destination": "R14", "traffic_class": "emergency"}'
+```
+
+Returns one `RoutingDecision` per algorithm against the same state, each with its
+own `is_fallback` flag and diagnostics.
+
+For statistically meaningful comparison use the benchmark, not this endpoint:
+
+```bash
+make bench      # 7 scenarios x 8 algorithms x 15 independent seeded runs
+make report     # tables, effect sizes, CIs and figures
+```
+
+A single comparison on a single state is an anecdote. `docs/14_RESULTS_AND_FINDINGS.md`
+is the result.
