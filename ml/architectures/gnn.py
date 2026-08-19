@@ -1,11 +1,11 @@
 """Graph neural network that ranks candidate paths.
 
 Message passing is implemented from scratch rather than via PyTorch Geometric.
-That was a deliberate call and the audit endorsed it: PyG's install matrix is a
+That is a deliberate call: PyG's install matrix is a
 real deployment liability, and a readable ~40-line implementation demonstrates
 what message passing actually *is*.
 
-Two architectural defects the audit identified are fixed here.
+Two architectural defects in the previous version are fixed here.
 
 **Mean aggregation instead of unnormalised sum.** ``index_add_`` alone makes a
 node's embedding magnitude scale with its degree. Training on a degree-2 ring
@@ -28,7 +28,7 @@ along the path and concatenates explicit path-level features.
 from __future__ import annotations
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 from core.qos import PROFILE_VECTOR_DIM
 
@@ -142,7 +142,7 @@ class GNNRouterModel(nn.Module):
         edge_embeddings = torch.relu(edge_embeddings)
 
         scores = []
-        for index, (node_ids, edge_ids) in enumerate(zip(paths, path_edges)):
+        for index, (node_ids, edge_ids) in enumerate(zip(paths, path_edges, strict=True)):
             if not node_ids or not edge_ids:
                 # An unusable candidate is scored as maximally bad rather than
                 # dropped, so the returned tensor always aligns with `paths`.

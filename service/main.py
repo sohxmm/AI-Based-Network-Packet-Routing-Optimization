@@ -15,8 +15,8 @@ import logging
 import os
 import time
 from collections.abc import AsyncIterator
-from pathlib import Path
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,7 +25,8 @@ from service.api.benchmark import router as benchmark_router
 from service.api.experiments import router as experiments_router
 from service.api.metrics import router as metrics_router
 from service.api.network import router as network_router
-from service.api.simulator import handle_simulator_step, router as simulator_router
+from service.api.simulator import handle_simulator_step
+from service.api.simulator import router as simulator_router
 from service.api.websocket import router as websocket_router
 from service.db.database import init_db
 from service.db.retention import prune_snapshots

@@ -48,7 +48,7 @@ class ConnectionManager:
             *(self._safe_send(ws, message) for ws in targets),
             return_exceptions=True,
         )
-        for websocket, result in zip(targets, results):
+        for websocket, result in zip(targets, results, strict=True):
             if isinstance(result, Exception):
                 self.disconnect(websocket)
 

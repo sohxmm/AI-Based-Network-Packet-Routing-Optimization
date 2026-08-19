@@ -213,8 +213,8 @@ def _load_trace(path: Path) -> list[TraceFrame]:
 
     if path.suffix.lower() in {".jsonl", ".ndjson", ".json"}:
         frames: list[TraceFrame] = []
-        for line in path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
             if not line:
                 continue
             payload = json.loads(line)

@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 
 from core.paths import candidate_paths, hop_breakdown
 from core.qos import ALL_CLASSES, QOS_PROFILES, evaluate_path, get_profile
-from routing import ALGORITHM_NAMES, describe_algorithms
+from routing import describe_algorithms
 from routing.classical.constrained import qos_oracle
 from routing.failover import measure_convergence
 from service.api.dispatch import (
@@ -21,8 +21,8 @@ from service.api.dispatch import (
 from service.api.websocket import manager
 from service.db.writes import build_routing_event, save_routing_events
 from service.schemas.requests import (
-    ConvergenceRequest,
     DEFAULT_ALGORITHMS,
+    ConvergenceRequest,
     RouteCompareRequest,
     RouteRequest,
     WatchFlowRequest,

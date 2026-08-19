@@ -129,7 +129,7 @@ class AntColonyRouter(Router):
 
         threshold = self.random.uniform(0, total)
         cumulative = 0.0
-        for (neighbor, _), weight in zip(neighbors, weights):
+        for (neighbor, _), weight in zip(neighbors, weights, strict=True):
             cumulative += weight
             if cumulative >= threshold:
                 return neighbor

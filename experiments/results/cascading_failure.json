@@ -268,7 +268,8 @@
     }
   },
   "warnings": [
-    "gnn: chooses the same path as Dijkstra 98% of the time, so it is degenerate and adds no information."
+    "gnn: chooses the same path as Dijkstra 98% of the time, so it is degenerate and adds no information.",
+    "rl: 38% of decisions came from the heuristic fallback, not a trained model. This row is a heuristic, not rl."
   ],
   "runtime_seconds": 165.5
 }

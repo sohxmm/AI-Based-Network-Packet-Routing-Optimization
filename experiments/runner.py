@@ -4,7 +4,7 @@ Run from the repository root::
 
     python -m experiments.runner --scenario all --runs 30
 
-Three structural changes from the previous harness, all required by the audit.
+Three structural changes from the previous harness, all of them necessary.
 
 **Independent replication.** Each algorithm now runs its *own* trajectory per
 seed. This is not optional once the simulator is closed-loop: if routing changes
@@ -38,7 +38,7 @@ import logging
 import random
 import time
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -51,7 +51,7 @@ from core.simulator import NetworkSimulator
 from experiments.scenarios import SCENARIO_NAMES, Scenario, get_scenario
 from experiments.statistics import paired_comparison, path_diversity, summarise
 from routing import ALGORITHM_NAMES, DEGENERACY_EXEMPT, LEARNED_ALGORITHMS, build_router_set
-from routing.learned.forecaster import CongestionPredictor, build_forecast_state
+from routing.learned.forecaster import CongestionPredictor
 
 logger = logging.getLogger("benchmark")
 
@@ -59,7 +59,12 @@ RESULTS_DIR = Path(__file__).resolve().parent / "results"
 
 #: Guardrail thresholds, named so the report and the honesty gates agree.
 DEGENERACY_THRESHOLD = 0.95
-FALLBACK_THRESHOLD = 0.50
+#: 0.20, not 0.50. At 38% fallback — which `rl` actually hits under
+#: `cascading_failure` — nearly two decisions in five came from the heuristic,
+#: and a reader comparing that row against Dijkstra is comparing a blend. The
+#: threshold that decides whether to warn has to be the threshold at which the
+#: number stops being the model's, not the point at which it becomes a majority.
+FALLBACK_THRESHOLD = 0.20
 
 
 def _decision_row(
@@ -332,7 +337,7 @@ def run_scenario(
     payload = {
         "scenario": scenario_name,
         "description": scenario.description,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "replication": {
             "n_runs": n_runs,
             "n_steps": n_steps,

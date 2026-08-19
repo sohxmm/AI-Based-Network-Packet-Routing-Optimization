@@ -7,11 +7,7 @@ Covers:
 - Hard cap rejection (not clamping)
 """
 
-import sys
-from pathlib import Path
-
-# Ensure backend is importable
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -37,27 +33,40 @@ class TestBenchmarkResultsAPI:
         assert isinstance(data["scenarios"], dict)
 
     def test_get_all_results_has_expected_fields_per_algorithm(self):
-        """Each algorithm entry has the required metric fields including effect_size_pct."""
+        """Each algorithm entry carries the metrics the dashboard renders.
+
+        ``util_variance`` and ``effect_size_pct`` used to be asserted here and
+        are deliberately gone. ``util_variance`` was a variance over the whole
+        run, which the closed-loop redesign made meaningless — bottleneck
+        utilization is now reported as a mean and a p95 over per-decision path
+        maxima. ``effect_size_pct`` was a percent difference between two means
+        presented as an effect size, which it is not;
+        :meth:`test_effect_size_is_a_real_effect_size` replaces it.
+        """
         response = client.get("/benchmark/results")
         data = response.json()
 
         if not data["scenarios"]:
             pytest.skip("No benchmark result files found")
 
-        # Check the first available scenario
         scenario_name = next(iter(data["scenarios"]))
         scenario = data["scenarios"][scenario_name]
         assert "algorithms" in scenario
 
+        required = [
+            "mean_latency",
+            "p95_latency",
+            "success_rate",
+            "fallback_rate",
+            "qos_satisfaction_rate",
+            "mean_path_max_utilization",
+            "p95_path_max_utilization",
+            "diversity_index",
+            "dijkstra_match_rate",
+        ]
         for algo_name, metrics in scenario["algorithms"].items():
-            assert "mean_latency" in metrics, f"Missing mean_latency for {algo_name}"
-            assert "p95_latency" in metrics, f"Missing p95_latency for {algo_name}"
-            assert "util_variance" in metrics, f"Missing util_variance for {algo_name}"
-            assert "success_rate" in metrics, f"Missing success_rate for {algo_name}"
-            assert "fallback_rate" in metrics, f"Missing fallback_rate for {algo_name}"
-            assert "dijkstra_match_rate" in metrics, f"Missing dijkstra_match_rate for {algo_name}"
-            assert "wilcoxon_p_value" in metrics, f"Missing wilcoxon_p_value for {algo_name}"
-            assert "effect_size_pct" in metrics, f"Missing effect_size_pct for {algo_name}"
+            for field in required:
+                assert field in metrics, f"Missing {field} for {algo_name}"
 
     def test_get_single_scenario(self):
         """GET /benchmark/results/{scenario} returns data for one scenario."""
@@ -76,8 +85,16 @@ class TestBenchmarkResultsAPI:
         response = client.get("/benchmark/results/nonexistent_scenario")
         assert response.status_code == 404
 
-    def test_effect_size_pct_is_computed(self):
-        """effect_size_pct should be non-null for non-dijkstra algorithms."""
+    def test_effect_size_is_a_real_effect_size(self):
+        """Every comparison carries Cliff's delta, a magnitude and a CI.
+
+        A percent difference in means is not an effect size: it says nothing
+        about spread, so a 60% difference swamped by run-to-run variance and a
+        0.7% difference that is perfectly consistent look equally impressive.
+        Cliff's delta is the probability one group exceeds the other, and the
+        bootstrap CI is what tells a reader how large the difference could
+        plausibly be.
+        """
         response = client.get("/benchmark/results")
         data = response.json()
 
@@ -87,16 +104,25 @@ class TestBenchmarkResultsAPI:
         scenario_name = next(iter(data["scenarios"]))
         algos = data["scenarios"][scenario_name]["algorithms"]
 
-        if "dijkstra" in algos:
-            assert algos["dijkstra"]["effect_size_pct"] == 0.0
+        # Dijkstra is the baseline, so it has nothing to compare against.
+        compared = {k: v for k, v in algos.items() if k != "dijkstra"}
+        assert compared, "Nothing to compare against the Dijkstra baseline"
 
-        # At least one non-dijkstra should have a computed effect size
-        non_dijkstra = {k: v for k, v in algos.items() if k != "dijkstra"}
-        if non_dijkstra:
-            has_effect = any(
-                v["effect_size_pct"] is not None for v in non_dijkstra.values()
+        for name, metrics in compared.items():
+            comparison = metrics.get("comparison_vs_dijkstra")
+            assert comparison, f"{name} has no comparison against Dijkstra"
+            assert -1.0 <= comparison["cliffs_delta"] <= 1.0
+            assert comparison["effect_magnitude"] in {
+                "negligible",
+                "small",
+                "medium",
+                "large",
+            }
+            assert comparison["ci95_low"] <= comparison["ci95_high"]
+            assert comparison["n_runs"] >= 2, (
+                f"{name} was compared across {comparison['n_runs']} run(s). "
+                f"Statistics across a single trajectory are pseudo-replicated."
             )
-            assert has_effect, "No non-dijkstra algorithm has a computed effect_size_pct"
 
 
 # ── Part 4: Experiment API ───────────────────────────────────────────────────
@@ -194,8 +220,28 @@ class TestExperimentHardCaps:
         )
         assert response.status_code == 422
 
+    def test_reject_over_budget_once_replication_is_counted(self):
+        """The budget is steps x pairs x runs, not steps x pairs.
+
+        ``runs`` defaults to 3 because a single trajectory cannot support the
+        statistics the API reports back. That makes replication part of the
+        cost, so a request that would have been legal under the old two-factor
+        budget can exceed the current one.
+        """
+        response = client.post(
+            "/experiments",
+            json={
+                "topology_size": 25,
+                "steps": 300,
+                "pairs_per_step": 10,  # 300 x 10 x 3 runs = 9000 > 6000
+                "algorithms": ["dijkstra"],
+            },
+        )
+        assert response.status_code == 422
+        assert "6000" in str(response.json().get("detail", ""))
+
     def test_accept_at_cap_limit(self):
-        """steps × pairs = 3000 exactly should be accepted (not rejected)."""
+        """A request exactly at the budget is accepted, not rejected."""
         response = client.post(
             "/experiments",
             json={
@@ -204,7 +250,8 @@ class TestExperimentHardCaps:
                 "failure_rate": 0,
                 "failure_pattern": "none",
                 "steps": 300,
-                "pairs_per_step": 10,  # 300 × 10 = 3000, exactly at cap
+                "pairs_per_step": 10,
+                "runs": 2,  # 300 x 10 x 2 = 6000, exactly at cap
                 "algorithms": ["dijkstra"],
             },
         )
@@ -228,6 +275,7 @@ class TestExperimentLifecycle:
                 "failure_pattern": "none",
                 "steps": 3,
                 "pairs_per_step": 2,
+                "runs": 2,
                 "algorithms": ["dijkstra", "bellman_ford"],
             },
         )
@@ -269,34 +317,45 @@ class TestExperimentLifecycle:
         assert "bellman_ford" in results["algorithms"]
 
         # Verify per-algorithm fields
-        for algo_name, metrics in results["algorithms"].items():
+        for metrics in results["algorithms"].values():
             assert "mean_latency" in metrics
             assert "success_rate" in metrics
-            assert "effect_size_pct" in metrics
+            assert "fallback_rate" in metrics
+        # A sandbox run reports the same statistics as the committed benchmark,
+        # so a user cannot accidentally compare a rigorous number against a
+        # casual one.
+        assert "comparison_vs_dijkstra" in results["algorithms"]["bellman_ford"]
 
     def test_nonexistent_job_returns_404(self):
         """GET /experiments/nonexistent/status should return 404."""
         response = client.get("/experiments/nonexistent-id/status")
         assert response.status_code == 404
 
-    def test_results_before_completion_returns_409(self):
-        """GET /experiments/{id}/results while running should return 409."""
-        # Submit a larger job that won't finish instantly
-        submit_res = client.post(
-            "/experiments",
-            json={
-                "topology_size": 25,
-                "congestion_profile": "normal",
-                "failure_rate": 0,
-                "failure_pattern": "none",
-                "steps": 100,
-                "pairs_per_step": 5,
-                "algorithms": ["dijkstra", "bellman_ford", "aco", "gnn", "rl", "multi_agent"],
-            },
-        )
-        assert submit_res.status_code == 200
-        job_id = submit_res.json()["job_id"]
+    @pytest.mark.parametrize("state", ["queued", "running"])
+    def test_results_before_completion_returns_409(self, state):
+        """GET /experiments/{id}/results on an unfinished job returns 409.
 
-        # Immediately try to get results — should be 409 (still running/queued)
-        results_res = client.get(f"/experiments/{job_id}/results")
-        assert results_res.status_code == 409
+        The job is injected directly rather than raced against a real one.
+        ``TestClient`` runs FastAPI background tasks synchronously *after* the
+        response is returned, so by the time the follow-up request is issued
+        the work has already finished — the previous version of this test
+        submitted a deliberately slow experiment and then asserted it was
+        unfinished, which made it a test of scheduling luck rather than of the
+        409 contract.
+        """
+        from service.api.experiments import _jobs
+
+        job_id = f"test-{state}"
+        _jobs[job_id] = {
+            "state": state,
+            "progress": {"runs_completed": 0, "total": 3},
+            "error": None,
+            "result": None,
+            "created_at": datetime.now(UTC),
+        }
+        try:
+            response = client.get(f"/experiments/{job_id}/results")
+            assert response.status_code == 409
+            assert state in str(response.json().get("detail", ""))
+        finally:
+            _jobs.pop(job_id, None)

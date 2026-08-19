@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException
 
@@ -45,7 +45,7 @@ async def handle_simulator_step(state: NetworkState) -> None:
     links = state.links
     snapshot = NetworkSnapshot(
         id=str(uuid.uuid4()),
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         state_json=state_to_dict(state),
         avg_utilization=(
             sum(link.utilization for link in links) / len(links) if links else 0.0

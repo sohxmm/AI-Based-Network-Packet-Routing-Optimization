@@ -1,7 +1,7 @@
 """MultiAgentRouter — decentralized hop-by-hop routing by regional PPO policies.
 
-What this was, and why it was renamed in the audit's eyes
---------------------------------------------------------
+What this was, and why the name was wrong
+-----------------------------------------
 The previous implementation was N independently trained PPO agents that each
 saw the *entire* global link vector and each emitted a *complete* end-to-end
 path, with the acting agent chosen by a lookup on the source node. That is a
@@ -36,7 +36,7 @@ states this in the same terms.
 The other fix here is the partition. The old router built a *fresh 25-node
 simulator* to derive its regions regardless of the topology it was actually
 serving, so on the 100-node scenario every node above R25 mapped to region -1
-and forced a heuristic fallback — the audit measured ``fallback_rate = 0.75``.
+and forced a heuristic fallback — a measured ``fallback_rate = 0.75``.
 Regions are now derived from the live state and recomputed whenever the node set
 changes.
 """
@@ -167,6 +167,28 @@ class MultiAgentRouter(Router):
     @property
     def num_regions(self) -> int:
         return len(self._partition)
+
+    @property
+    def regions_loaded(self) -> list[int]:
+        """Which regions have a trained policy behind them.
+
+        A public accessor rather than a peek at ``_regions_loaded``, because
+        "the router loaded" and "every region loaded" are different facts and
+        callers keep needing the second one. ``is_trained`` is true when *any*
+        region has a policy, so a partially-trained router still routes — the
+        regions without one fall back — and this is how you find out.
+        """
+        return sorted(self._regions_loaded)
+
+    @property
+    def regions_fallback(self) -> list[int]:
+        """Regions with no trained policy, which route heuristically.
+
+        Empty is the healthy case. Anything else means part of every path
+        crossing those regions was chosen by the heuristic, so the router's
+        results are a blend and should be reported as one.
+        """
+        return [r for r in range(self.num_regions) if r not in self._regions_loaded]
 
     def status(self) -> dict[str, object]:
         return {

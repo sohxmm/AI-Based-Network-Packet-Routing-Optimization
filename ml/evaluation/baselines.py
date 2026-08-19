@@ -1,6 +1,6 @@
 """Floors and ceilings, without which a reported score means nothing.
 
-The audit's sharpest point about the ML work was not that the PPO agent failed.
+The problem with the previous ML work was not that the PPO agent failed.
 Negative results are fine. It was that the reported number — "mean reward
 improved from -77 to -61" — was uninterpretable, because nobody had measured
 what a *random* policy scores or what an *oracle* scores on the same episodes.
@@ -23,9 +23,9 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Callable
 
 import numpy as np
 
@@ -46,7 +46,7 @@ class PolicyResult:
     n_episodes: int
 
     @classmethod
-    def from_returns(cls, name: str, returns: list[float]) -> "PolicyResult":
+    def from_returns(cls, name: str, returns: list[float]) -> PolicyResult:
         array = np.asarray(returns, dtype=float)
         n = max(1, len(array))
         mean = float(array.mean()) if len(array) else 0.0
