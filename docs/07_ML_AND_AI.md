@@ -89,7 +89,7 @@ every path solves a harder problem than the one that matters: only the
 score higher by at least a margin" and says nothing about absolute values.
 
 **The validation split is the part worth studying.** The original code split one
-simulator run 70/30. Adjacent timesteps in that run are ~70% correlated, so a
+simulator run 70/30. Adjacent timesteps in that run are ~85% correlated, so a
 "validation" sample was a near-copy of a training sample and validation accuracy
 measured memorisation of neighbouring timesteps. Train, validation and test now
 come from **three independently seeded simulators** (42, 1042, 2042), so
@@ -212,7 +212,7 @@ congestion is *going* rather than where it is.
 ### Why the first version scored −1.77
 
 The model predicted the utilisation **level**. Utilisation is an AR(1) process
-with `a = 0.7`, which means "copy the last value" — persistence — is right to
+with `a = 0.85`, which means "copy the last value" — persistence — is right to
 within the one-step noise almost every time. Predicting levels forces the network
 to spend its capacity relearning the identity function, and it lost to
 persistence by a factor of 2.8. Skill score −1.77.
