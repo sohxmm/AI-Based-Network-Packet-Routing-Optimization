@@ -1,5 +1,5 @@
-# Documentation/12_KNOWN_ISSUES.md admitted CI was missing. Every one of the
-# audit's four headline findings would have been caught by one of these jobs:
+# CI was missing entirely. Every one of the four headline defects we found
+# would have been caught by one of these jobs:
 # the docker job catches the fresh-clone failure and the model-path mismatch,
 # and the honesty gates catch documentation drifting away from the artifacts.
 
@@ -75,11 +75,17 @@ jobs:
         run: docker compose build
       - run: docker compose up -d
       - name: Wait for the backend to report healthy
+        # Grepping for '"status"' would pass on "degraded", which is exactly the
+        # state a container in trouble reports. /health only says "ok" once the
+        # background simulator loop has produced a recent tick, so that is the
+        # string to wait for.
         run: |
           for i in $(seq 1 40); do
-            if curl -fs localhost:8000/health | grep -q '"status"'; then exit 0; fi
+            if curl -fs localhost:8000/health | grep -q '"status": *"ok"'; then exit 0; fi
             sleep 5
           done
+          echo "Backend never reported status=ok. Last response:"
+          curl -s localhost:8000/health || true
           docker compose logs
           exit 1
       - name: Smoke test the API
