@@ -1,177 +1,294 @@
-import { useMemo, useState, useEffect } from "react";
-import { Settings } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
-import ControlPanel from "./components/ControlPanel.jsx";
+import BenchmarkReport from "./components/BenchmarkReport.jsx";
+import { BenchmarkResultView } from "./components/BenchmarkResultView.jsx";
 import CongestionHeatmap from "./components/CongestionHeatmap.jsx";
-import MetricsPanel from "./components/MetricsPanel.jsx";
-import RouteComparison from "./components/RouteComparison.jsx";
-import TopologyGraph from "./components/TopologyGraph.jsx";
-import LeftPanel from "./components/LeftPanel.jsx";
-import RightPanel from "./components/RightPanel.jsx";
-import BenchmarkReport, { BenchmarkResultView } from "./components/BenchmarkReport.jsx";
+import ControlPanel from "./components/ControlPanel.jsx";
 import ExperimentBuilder from "./components/ExperimentBuilder.jsx";
+import FailoverPanel from "./components/FailoverPanel.jsx";
+import LeftPanel from "./components/LeftPanel.jsx";
+import MetricsPanel from "./components/MetricsPanel.jsx";
+import ModelStatusBanner from "./components/ModelStatusBanner.jsx";
+import NetworkSourcePanel from "./components/NetworkSourcePanel.jsx";
+import PathDivergenceView from "./components/PathDivergenceView.jsx";
+import RightPanel from "./components/RightPanel.jsx";
+import TopologyGraph from "./components/TopologyGraph.jsx";
+import { API_BASE_URL } from "./config.js";
 import { useNetworkStream } from "./hooks/useNetworkStream.js";
 import { useRouteRequest } from "./hooks/useRouteRequest.js";
 
+/**
+ * Four themes, not ten.
+ *
+ * The ten-theme engine worked and demonstrated real CSS architecture, but ten
+ * themes cost about the same effort as fixing the model-loading bug did. Four
+ * keep the engine and the light/dark handling honest without reading as
+ * padding. `isDark` drives chart palettes, which are validated separately for
+ * each mode rather than flipped automatically.
+ */
+const THEMES = [
+  { id: "github-dark", label: "GitHub Dark", dark: true },
+  { id: "nord", label: "Nord", dark: true },
+  { id: "dracula", label: "Dracula", dark: true },
+  { id: "solarized-light", label: "Solarized Light", dark: false },
+];
+
+const ALL_THEME_CLASSES = [
+  "theme-solarized-light",
+  "theme-solarized-dark",
+  "theme-dracula",
+  "theme-monokai",
+  "theme-nord",
+  "theme-tokyo-night",
+  "theme-one-dark",
+  "theme-gruvbox",
+  "theme-synthwave",
+  "theme-github-dark",
+];
+
+const TABS = [
+  { id: "live", label: "Live network" },
+  { id: "divergence", label: "Path divergence" },
+  { id: "benchmark", label: "Benchmark" },
+  { id: "lab", label: "Lab" },
+];
+
 function App() {
-  const { networkState, isConnected, error: streamError } = useNetworkStream();
-  const { compareRoutes, postSimulatorAction, isLoading, error: actionError } = useRouteRequest();
+  const {
+    networkState,
+    failoverEvents,
+    isConnected,
+    isStale,
+    error: streamError,
+  } = useNetworkStream();
+
+  const {
+    compareRoutes,
+    postSimulatorAction,
+    setNetworkSource,
+    watchFlow,
+    runConvergenceTest,
+    isLoading,
+    error: actionError,
+  } = useRouteRequest();
+
   const [comparison, setComparison] = useState(null);
-  const [theme, setTheme] = useState("github-dark");
-  
-  // To show experiment results in the unified layout
   const [experimentResults, setExperimentResults] = useState(null);
-  const [showBenchmark, setShowBenchmark] = useState(false);
+  const [trafficClass, setTrafficClass] = useState("best_effort");
+  const [trafficClasses, setTrafficClasses] = useState([]);
+  const [theme, setTheme] = useState("github-dark");
+  const [tab, setTab] = useState("live");
+
+  const isDark = THEMES.find((entry) => entry.id === theme)?.dark ?? true;
 
   useEffect(() => {
     const root = document.documentElement;
-    const allThemes = [
-      "theme-solarized-light", "theme-solarized-dark", "theme-dracula",
-      "theme-monokai", "theme-nord", "theme-tokyo-night", "theme-one-dark",
-      "theme-gruvbox", "theme-synthwave", "theme-github-dark"
-    ];
-    root.classList.remove(...allThemes, "dark", "theme-maroon", "theme-green");
+    root.classList.remove(...ALL_THEME_CLASSES);
     root.classList.add(`theme-${theme}`);
   }, [theme]);
 
-  const highlightedPath = useMemo(() => {
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/network/algorithms`)
+      .then((response) => response.json())
+      .then((data) => setTrafficClasses(data.traffic_classes ?? []))
+      .catch(() => undefined);
+  }, []);
+
+  // The single best route, overlaid on the live topology.
+  const bestPath = useMemo(() => {
     const successful = comparison?.results?.filter((result) => result.success) ?? [];
-    return successful.reduce((best, result) => {
-      if (!best) {
-        return result;
-      }
-      return result.total_latency < best.total_latency ? result : best;
-    }, null)?.path ?? [];
+    const best = successful.reduce(
+      (winner, result) =>
+        !winner || result.total_latency < winner.total_latency ? result : winner,
+      null
+    );
+    return best ? [{ algorithm: best.algorithm, path: best.path, is_fallback: best.is_fallback }] : [];
   }, [comparison]);
 
-  async function handleCompareRoutes(source, destination, useForecast) {
-    const result = await compareRoutes({ source, destination, use_forecast: useForecast });
-    if (result) {
-      setComparison(result);
-    }
+  async function handleCompare(source, destination) {
+    const result = await compareRoutes({ source, destination, trafficClass });
+    if (result) setComparison(result);
   }
 
   return (
     <main className="min-h-screen transition-colors duration-300">
-      <section className="mx-auto flex min-h-screen max-w-[1800px] flex-col gap-4 px-4 py-4">
+      <div className="mx-auto flex min-h-screen max-w-[1800px] flex-col gap-3 px-4 py-4">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-app-border pb-3">
           <div>
-            <h1 className="text-xl font-semibold">
+            <h1 className="text-lg font-semibold text-app-text">
               AI-Based Network Packet Routing Optimization
             </h1>
-            <p className="text-sm text-app-muted">
-              Step {networkState?.step_count ?? "--"} | {networkState?.links?.length ?? "--"} active links
+            <p className="text-xs text-app-muted">
+              Step {networkState?.step_count ?? "--"} ·{" "}
+              {networkState?.links?.length ?? "--"} links ·{" "}
+              {networkState?.nodes?.length ?? "--"} nodes
             </p>
           </div>
-          <div className="flex items-center gap-4">
-            <button 
-              onClick={() => setShowBenchmark(!showBenchmark)}
-              className="text-sm rounded border border-app-border bg-app-input-bg px-3 py-1 hover:bg-app-panel transition-colors text-app-text"
-            >
-              {showBenchmark ? "Hide Benchmark Report" : "📊 View Benchmark Report"}
-            </button>
-            <span
-              className={`rounded px-2 py-1 text-xs font-medium ${
-                isConnected ? "bg-emerald-400 text-emerald-950" : "bg-amber-300 text-amber-950"
-              }`}
-            >
-              {isConnected ? "Live stream connected" : "Waiting for backend"}
-            </span>
-            <div className="flex items-center gap-2 text-sm rounded border border-app-border bg-app-input-bg px-2 h-8">
-              <span className="text-app-muted">theme:</span>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <ConnectionPill isConnected={isConnected} isStale={isStale} />
+            <label className="flex h-8 items-center gap-2 rounded border border-app-border bg-app-input-bg px-2 text-xs">
+              <span className="text-app-muted">Theme</span>
               <select
                 value={theme}
-                onChange={(e) => setTheme(e.target.value)}
-                className="bg-transparent text-app-text outline-none cursor-pointer"
+                onChange={(event) => setTheme(event.target.value)}
+                className="cursor-pointer bg-transparent text-app-text outline-none"
                 aria-label="Select theme"
               >
-                <option value="solarized-light">solarized-light</option>
-                <option value="solarized-dark">solarized-dark</option>
-                <option value="dracula">dracula</option>
-                <option value="monokai">monokai</option>
-                <option value="nord">nord</option>
-                <option value="tokyo-night">tokyo-night</option>
-                <option value="one-dark">one-dark</option>
-                <option value="gruvbox">gruvbox</option>
-                <option value="synthwave">synthwave</option>
-                <option value="github-dark">github-dark</option>
+                {THEMES.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.label}
+                  </option>
+                ))}
               </select>
-            </div>
+            </label>
           </div>
         </header>
 
+        <ModelStatusBanner />
+
         {(streamError || actionError) && (
-          <div className="rounded border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-sm text-amber-900">
+          <div
+            role="alert"
+            className="rounded border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-sm text-amber-400"
+          >
             {streamError || actionError}
           </div>
         )}
 
-        <div className="grid flex-1 gap-4 lg:grid-cols-[300px_minmax(0,1fr)_320px]">
-          {/* Left Column: Experiment Builder & Left Panel */}
-          <div className="flex flex-col gap-4">
+        {isStale && isConnected && (
+          <div
+            role="alert"
+            className="rounded border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-sm text-amber-400"
+          >
+            Connected, but no update for over 5 seconds. The backend&apos;s simulator
+            loop may have stopped — check <code className="font-mono">/health</code>.
+          </div>
+        )}
+
+        <nav className="flex gap-1" role="tablist" aria-label="Dashboard section">
+          {TABS.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === entry.id}
+              onClick={() => setTab(entry.id)}
+              className={`rounded-t border-b-2 px-3 py-1.5 text-sm transition-colors ${
+                tab === entry.id
+                  ? "border-app-accent text-app-text"
+                  : "border-transparent text-app-muted hover:text-app-text"
+              }`}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </nav>
+
+        {tab === "live" && (
+          <div className="grid flex-1 gap-3 lg:grid-cols-[300px_minmax(0,1fr)_320px]">
+            <div className="flex flex-col gap-3">
+              <NetworkSourcePanel
+                onSourceChange={setNetworkSource}
+                isLoading={isLoading}
+              />
+              <LeftPanel networkState={networkState} />
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <div className="min-h-[480px] flex-1">
+                <TopologyGraph
+                  networkState={networkState}
+                  highlightedPaths={bestPath}
+                  isDark={isDark}
+                />
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <MetricsPanel networkState={networkState} comparison={comparison} />
+                <CongestionHeatmap networkState={networkState} isDark={isDark} />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <ControlPanel
+                networkState={networkState}
+                isLoading={isLoading}
+                onSimulatorAction={postSimulatorAction}
+              />
+              <FailoverPanel
+                networkState={networkState}
+                failoverEvents={failoverEvents}
+                onWatch={watchFlow}
+                onConvergence={runConvergenceTest}
+                isLoading={isLoading}
+              />
+              <RightPanel networkState={networkState} />
+            </div>
+          </div>
+        )}
+
+        {tab === "divergence" && (
+          <PathDivergenceView
+            networkState={networkState}
+            comparison={comparison}
+            trafficClass={trafficClass}
+            onTrafficClassChange={setTrafficClass}
+            trafficClasses={trafficClasses}
+            isLoading={isLoading}
+            onCompare={handleCompare}
+            isDark={isDark}
+          />
+        )}
+
+        {tab === "benchmark" && (
+          <section className="rounded border border-app-border bg-app-panel p-4">
+            <BenchmarkReport isDark={isDark} />
+          </section>
+        )}
+
+        {tab === "lab" && (
+          <div className="grid gap-3 lg:grid-cols-[340px_minmax(0,1fr)]">
             <ExperimentBuilder onResults={setExperimentResults} />
-            <LeftPanel networkState={networkState} />
-          </div>
-
-          {/* Center Column: Topology & Main Metrics */}
-          <div className="flex flex-col gap-4">
-            <div className="flex-1 min-h-[500px]">
-              <TopologyGraph networkState={networkState} highlightedPath={highlightedPath} isDark={theme !== 'solarized-light'} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <MetricsPanel networkState={networkState} comparison={comparison} />
-              <CongestionHeatmap networkState={networkState} isDark={theme !== 'solarized-light'} />
-            </div>
-          </div>
-
-          {/* Right Column: Controls & Route Comparison */}
-          <div className="flex flex-col gap-4">
-            <RouteComparison
-              networkState={networkState}
-              comparison={comparison}
-              isLoading={isLoading}
-              onCompare={handleCompareRoutes}
-            />
-            <ControlPanel
-              networkState={networkState}
-              isLoading={isLoading}
-              onSimulatorAction={postSimulatorAction}
-            />
-            <RightPanel networkState={networkState} />
-          </div>
-        </div>
-
-        {/* Bottom Drawer for Experiment Results */}
-        {experimentResults && (
-          <div className="mt-4 pt-4 border-t border-app-border flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-app-text">Experiment Results</h2>
-              <button 
-                onClick={() => setExperimentResults(null)}
-                className="text-sm rounded border border-app-border bg-app-input-bg px-3 py-1 hover:bg-app-panel transition-colors text-app-text"
-              >
-                Dismiss
-              </button>
-            </div>
-            <div className="rounded border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">
-              ✅ Experiment complete — results below use the same analysis as the fixed benchmark report.
-            </div>
-            <BenchmarkResultView
-              scenarioData={experimentResults}
-              scenarioLabel="Custom Experiment"
-              showLimitations={false}
-            />
+            <section className="rounded border border-app-border bg-app-panel p-4">
+              {experimentResults ? (
+                <BenchmarkResultView
+                  scenarioData={experimentResults}
+                  scenarioLabel="Custom experiment"
+                  showLimitations={false}
+                  isDark={isDark}
+                />
+              ) : (
+                <p className="text-sm text-app-muted">
+                  Configure an experiment on the left and run it. Results use the
+                  same engine, the same guardrails and the same statistics as the
+                  fixed benchmark scenarios.
+                </p>
+              )}
+            </section>
           </div>
         )}
-
-        {/* Bottom Drawer for Benchmark Report */}
-        {showBenchmark && (
-          <div className="mt-4 pt-4 border-t border-app-border">
-            <BenchmarkReport />
-          </div>
-        )}
-      </section>
+      </div>
     </main>
+  );
+}
+
+function ConnectionPill({ isConnected, isStale }) {
+  const tone = !isConnected
+    ? "bg-amber-400/20 text-amber-400 border-amber-400/40"
+    : isStale
+      ? "bg-amber-400/20 text-amber-400 border-amber-400/40"
+      : "bg-emerald-400/20 text-emerald-400 border-emerald-400/40";
+
+  const label = !isConnected
+    ? "Waiting for backend"
+    : isStale
+      ? "Connected but stale"
+      : "Live stream connected";
+
+  return (
+    <span className={`rounded border px-2 py-1 text-xs font-medium ${tone}`}>
+      {label}
+    </span>
   );
 }
 

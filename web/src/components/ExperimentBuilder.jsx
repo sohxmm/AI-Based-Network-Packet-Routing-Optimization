@@ -6,20 +6,27 @@
  * render using the shared BenchmarkResultView component from BenchmarkReport.
  */
 
-import React, { useState, useMemo, useEffect, useRef } from "react";
-import { BenchmarkResultView } from "./BenchmarkReport.jsx";
+import { useState, useEffect, useRef } from "react";
 
 import { API_BASE_URL as API_BASE } from "../config.js";
 
 const ALL_ALGORITHMS = [
   { id: "dijkstra", label: "Dijkstra" },
   { id: "bellman_ford", label: "Bellman-Ford" },
-  { id: "aco", label: "ACO" },
+  { id: "constrained", label: "Constrained k-shortest" },
+  { id: "aco", label: "Ant Colony" },
   { id: "gnn", label: "GNN" },
-  { id: "gnn_predictive", label: "GNN Predictive" },
-  { id: "rl", label: "RL" },
-  { id: "rl_predictive", label: "RL Predictive" },
-  { id: "multi_agent", label: "MARL" },
+  { id: "rl", label: "RL (PPO)" },
+  { id: "multi_agent", label: "Multi-Agent RL" },
+  { id: "random_baseline", label: "Random baseline" },
+];
+
+const TRAFFIC_CLASSES = [
+  { id: "best_effort", label: "Best effort" },
+  { id: "emergency", label: "Emergency" },
+  { id: "interactive", label: "Voice / video" },
+  { id: "gaming", label: "Gaming" },
+  { id: "bulk", label: "Bulk transfer" },
 ];
 
 const MAX_TOTAL_DECISIONS = 3000;
@@ -27,7 +34,7 @@ const MAX_TOTAL_DECISIONS = 3000;
 // Observed throughput: ~8000 decisions in ~2.5 min = 3200 decisions/min
 const DECISIONS_PER_MINUTE = 3200;
 
-export default function ExperimentBuilder({ onRunStart, onResults }) {
+export default function ExperimentBuilder({ onResults }) {
   // ── Config form state ─────────────────────────────────────────────────
   const [topologySize, setTopologySize] = useState(25);
   const [congestionProfile, setCongestionProfile] = useState("normal");
@@ -35,21 +42,21 @@ export default function ExperimentBuilder({ onRunStart, onResults }) {
   const [failurePattern, setFailurePattern] = useState("none");
   const [steps, setSteps] = useState(50);
   const [pairsPerStep, setPairsPerStep] = useState(5);
+  const [runs, setRuns] = useState(3);
+  const [trafficClasses, setTrafficClasses] = useState(["best_effort"]);
   const [selectedAlgos, setSelectedAlgos] = useState(
     ALL_ALGORITHMS.map((a) => a.id)
   );
 
   // ── Job state ─────────────────────────────────────────────────────────
-  const [jobId, setJobId] = useState(null);
   const [jobState, setJobState] = useState(null); // queued | running | done | failed
-  const [progress, setProgress] = useState({ steps_completed: 0, total: 1 });
-  const [results, setResults] = useState(null);
+  const [progress, setProgress] = useState({ runs_completed: 0, total: 1 });
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const pollRef = useRef(null);
 
   // ── Derived values ────────────────────────────────────────────────────
-  const totalDecisions = steps * pairsPerStep;
+  const totalDecisions = steps * pairsPerStep * runs;
   const exceedsCap = totalDecisions > MAX_TOTAL_DECISIONS;
   const totalDecisionsWithAlgos = totalDecisions * selectedAlgos.length;
   const estimatedMinutes = totalDecisionsWithAlgos / DECISIONS_PER_MINUTE;
@@ -74,7 +81,6 @@ export default function ExperimentBuilder({ onRunStart, onResults }) {
 
     setSubmitting(true);
     setError(null);
-    setResults(null);
     setJobState(null);
 
     try {
@@ -88,7 +94,9 @@ export default function ExperimentBuilder({ onRunStart, onResults }) {
           failure_pattern: failurePattern,
           steps,
           pairs_per_step: pairsPerStep,
+          runs,
           algorithms: selectedAlgos,
+          traffic_classes: trafficClasses,
         }),
       });
 
@@ -103,7 +111,6 @@ export default function ExperimentBuilder({ onRunStart, onResults }) {
       }
 
       const data = await res.json();
-      setJobId(data.job_id);
       setJobState("queued");
       startPolling(data.job_id);
     } catch (err) {
@@ -123,7 +130,7 @@ export default function ExperimentBuilder({ onRunStart, onResults }) {
         if (!res.ok) return;
         const data = await res.json();
         setJobState(data.state);
-        setProgress(data.progress || { steps_completed: 0, total: 1 });
+        setProgress(data.progress || { runs_completed: 0, total: 1 });
 
         if (data.state === "done") {
           clearInterval(pollRef.current);
@@ -156,7 +163,7 @@ export default function ExperimentBuilder({ onRunStart, onResults }) {
 
   const progressPct =
     progress.total > 0
-      ? Math.round((progress.steps_completed / progress.total) * 100)
+      ? Math.round(((progress.runs_completed ?? 0) / (progress.total || 1)) * 100)
       : 0;
 
   return (
@@ -256,7 +263,7 @@ export default function ExperimentBuilder({ onRunStart, onResults }) {
           <legend className="px-1 text-[11px] font-semibold text-app-muted uppercase tracking-wider">
             4. Simulation Scale
           </legend>
-          <div className="grid grid-cols-2 gap-2 mt-1">
+          <div className="grid grid-cols-3 gap-2 mt-1">
             <label className="text-[10px] text-app-muted">
               Steps (≤300)
               <input
@@ -285,7 +292,48 @@ export default function ExperimentBuilder({ onRunStart, onResults }) {
                 className="mt-1 h-7 w-full rounded border border-app-border bg-app-panel px-2 text-xs text-app-text outline-none focus:border-app-accent"
               />
             </label>
+            <label className="text-[10px] text-app-muted" title="Independent seeded replications. Statistics are computed across runs, not across the correlated decisions inside one run.">
+              Runs (≤10)
+              <input
+                type="number"
+                min={1}
+                max={10}
+                value={runs}
+                onChange={(e) =>
+                  setRuns(Math.max(1, Math.min(10, Number(e.target.value) || 1)))
+                }
+                className="mt-1 h-7 w-full rounded border border-app-border bg-app-panel px-2 text-xs text-app-text outline-none focus:border-app-accent"
+              />
+            </label>
           </div>
+
+          <fieldset className="mt-2 border-0 p-0">
+            <legend className="text-[10px] text-app-muted">Traffic classes</legend>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {TRAFFIC_CLASSES.map((cls) => (
+                <button
+                  key={cls.id}
+                  type="button"
+                  aria-pressed={trafficClasses.includes(cls.id)}
+                  onClick={() =>
+                    setTrafficClasses((current) =>
+                      current.includes(cls.id)
+                        ? current.filter((item) => item !== cls.id) || []
+                        : [...current, cls.id]
+                    )
+                  }
+                  className={`rounded-full border px-2 py-0.5 text-[10px] ${
+                    trafficClasses.includes(cls.id)
+                      ? "border-app-accent bg-app-accent/15 text-app-text"
+                      : "border-app-border text-app-muted"
+                  }`}
+                >
+                  {cls.label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
           <div
             className={`mt-2 text-[10px] ${
               exceedsCap ? "text-red-400 font-semibold" : "text-app-muted"

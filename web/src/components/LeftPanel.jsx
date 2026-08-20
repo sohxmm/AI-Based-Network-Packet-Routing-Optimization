@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Layers } from "lucide-react";
 
 function LeftPanel({ networkState }) {
@@ -31,4 +32,18 @@ function LeftPanel({ networkState }) {
   );
 }
 
-export default LeftPanel;
+
+/**
+ * Memoized on step_count and theme.
+ *
+ * The backend broadcasts a full network state once per second and every
+ * consumer re-renders. TopologyGraph handles that deliberately; these panels
+ * did not, and at 100 nodes the cascade is visible. The payload object is
+ * replaced every tick, so a default shallow compare never helps - the
+ * comparator has to key on the tick counter.
+ */
+const MemoizedLeftPanel = memo(LeftPanel, (prev, next) =>
+    prev.networkState?.step_count === next.networkState?.step_count &&
+    prev.comparison === next.comparison);
+
+export default MemoizedLeftPanel;
