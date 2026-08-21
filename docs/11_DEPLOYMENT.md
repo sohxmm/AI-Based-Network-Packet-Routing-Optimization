@@ -145,7 +145,7 @@ have to make, not risks to be aware of.
 | **No rate limiting** | The experiment endpoint has hard caps, but nothing limits request volume. |
 | **Secrets in `.env`** | Fine locally; production wants a secret manager. `.env.example` ships `change-me-before-deploying` rather than a plausible password, because a plausible default is one people keep. |
 | **No structured log shipping** | `service/logging_config.py` logs to stdout; nothing aggregates it. |
-| **Retention is time-based only** | `prune_snapshots()` trims by age with no size cap. |
+| **Retention window is not configurable** | `prune_snapshots()` keeps the newest 10,000 rows. The cap is a module constant, not a setting. |
 | **No backup policy** | The `postgres_data` volume is not backed up. |
 
 None of these is hard. All of them are unaddressed, and none should be discovered
