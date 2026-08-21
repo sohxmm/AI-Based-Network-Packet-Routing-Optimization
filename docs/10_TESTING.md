@@ -91,7 +91,7 @@ Every algorithm on known topologies, plus:
 `tests/honesty/test_honesty_gates.py`. These are the tests that make the rest of
 the project trustworthy, and they are worth reading in full.
 
-The project already had good instincts before the audit: `is_fallback` was
+The project already had good instincts here: `is_fallback` was
 threaded through the stack, `dijkstra_match_rate` was invented specifically to
 catch its own models being degenerate, and there was a UI badge whose only job
 was to display "matches Dijkstra, no differentiation". What it did not have was
@@ -187,12 +187,17 @@ fails with a numbered list if:
 - a results file does not match the current schema;
 - the documentation references a module path that no longer exists.
 
+<!-- verify-claims: refuted -->
+
 It exists because of one specific incident. `12_KNOWN_ISSUES.md` stated the PPO
 agent's reward "improved from -77 to -61 (+21%)" with a best evaluation at
 "-45.81". The committed `evaluations.npz` contained values from **-86.57 to
 -99.67**, with the best at the *first* checkpoint. Nobody wrote those numbers
 dishonestly — they came from a run that was never committed — but there was no
 mechanism that could ever notice the divergence.
+
+(The figures in that paragraph are quoted in order to refute them. The marker
+above tells the verifier so, and applies until the next heading.)
 
 A document may still quote a refuted figure, which is how you write down what was
 wrong, but only under an explicit `<!-- verify-claims: refuted -->` marker. It is

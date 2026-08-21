@@ -1,6 +1,6 @@
 # Internship Work Log
 
-Total hours: 207
+Total hours: 211.5
 
 ## 09/06/2026
 
@@ -169,6 +169,10 @@ Tasks:
 
 Status:
 - RL router fully operational with trained PPO policy
+
+Correction added 28/08/2026:
+- The three reward figures above are not supported by anything in the repository. The committed `evaluations.npz` spans -86.57 to -99.67 with the best result at the *first* checkpoint, and the regression slope is -0.094 per 100k steps (r2 0.001, p 0.88) — a flat line through noise. They came from a training run that was never committed. The entry is left as written because it is a contemporaneous record of what I believed that day; `scripts/verify_claims.py` now exists so that this class of drift cannot go unnoticed again
+- "RL router fully operational" was also wrong, for an unrelated reason: the loader looked for `rl_router_final.zip` while training had saved `ppo_routing_agent.zip`, so the router silently served a heuristic. See the entries from 12/08 onward
 
 ## 28/06/2026
 
@@ -637,3 +641,21 @@ Tasks:
 
 Status:
 - Every numbered document now describes the code that exists
+
+## 28/08/2026
+
+Hours: 4.5
+
+Tasks:
+- Scoped the stale-reference check to paragraphs rather than lines. Markdown is hard-wrapped, so where a line breaks is an accident of column width and a correctly framed sentence failed whenever the wrap fell in the wrong place
+- Found and corrected two false claims in my own documentation: `packet_logs` was described in three documents with a full column table and does not exist, and retention was described backwards — it is a row-count cap, not an age cap
+- Added a verifier check that fails CI if any document names a database table the ORM does not declare, because a table is a thing with a name and that is exactly the kind of claim a script can check and a reader cannot
+- Rewrote the database schema document against the models
+- Added the QoS result to the final report and to the README, with the per-class breakdown and the honest summary: the project built the arena in which learned routing could win and has not yet trained a model that wins in it
+- Annotated the June entry whose three reward figures are unsupported by any committed artifact, leaving the entry itself as written because it is a contemporaneous record
+- Made QoS feasibility a server-computed field on every routing response. It was read from the router's own diagnostics, which only the constraint-aware routers populate, so every row carried a verdict except Dijkstra and Bellman-Ford — the two constraint-blind routers whose feasibility a reader most needs to see
+- Added the fallback and per-class QoS traps to the gotchas document
+- Regenerated the final report with all seven scenarios
+
+Status:
+- Four of four AI features run on a fresh clone; every published number is reproducible from the committed artifacts. Both linters clean, all tests passing, and the claim verifier reports no drift between the documentation and the artifacts

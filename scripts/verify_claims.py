@@ -212,8 +212,24 @@ def check_results_match_the_current_schema() -> None:
             )
 
 
+#: Words that mark a reference as describing the past rather than the present.
+HISTORICAL_FRAMING = re.compile(
+    r"was|were|previously|used to|old|before|formerly|historical|no longer|"
+    r"original|refuted|the audit",
+    re.IGNORECASE,
+)
+
+
 def check_no_stale_module_references() -> None:
-    """Documentation must not point at paths that no longer exist."""
+    """Documentation must not point at paths that no longer exist.
+
+    Framing is checked over the surrounding **paragraph**, not the line the token
+    happens to land on. Markdown is hard-wrapped, so where a line breaks is an
+    accident of column width: a correctly framed sentence like "the original bug
+    where the loader looked for `rl_router_final.zip`" fails a line-scoped check
+    whenever the wrap falls between "original" and the filename. Scoping to the
+    paragraph matches how a reader actually encounters the sentence.
+    """
     stale = [
         "backend/router/rl_agent.py",
         "backend/ml/models/rl_router_final",
@@ -223,13 +239,10 @@ def check_no_stale_module_references() -> None:
     for document in list(DOCS.glob("*.md")) + [REPO_ROOT / "README.md"]:
         if not document.exists():
             continue
-        text = document.read_text(encoding="utf-8")
+        paragraphs = re.split(r"\n\s*\n", document.read_text(encoding="utf-8"))
         for token in stale:
-            # A historical reference is fine when it is explicitly framed as one.
-            for line in text.splitlines():
-                if token in line and not re.search(
-                    r"was|previously|used to|old|before|formerly|historical", line, re.I
-                ):
+            for paragraph in paragraphs:
+                if token in paragraph and not HISTORICAL_FRAMING.search(paragraph):
                     fail(
                         f"{document.name} references '{token}', which no longer "
                         f"exists, without framing it as historical."
