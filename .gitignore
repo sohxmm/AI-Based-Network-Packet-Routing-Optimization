@@ -29,7 +29,6 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
-backend/.env
 
 # Editors and OS
 .idea/
@@ -37,12 +36,26 @@ backend/.env
 .DS_Store
 Thumbs.db
 
-# ML artifacts
-backend/ml/models/
-backend/ml/logs/
-*.pt
-*.pth
-*.onnx
+# ── Trained model artifacts ──────────────────────────────────────────────────
+# DELIBERATE DECISION, documented because the previous .gitignore contradicted
+# itself: it excluded backend/ml/models/ and *.pt while two checkpoints were
+# committed anyway.
+#
+# Every trained artifact IS committed. Together they are about 1 MB, and
+# shipping them is what makes `docker compose up` produce a working demo with
+# real models instead of silent heuristic fallbacks — which was the single worst
+# defect in this project's history. Reproduce them from scratch with
+# `make train` (~35 min on a laptop CPU, no GPU required).
+ml/checkpoints/checkpoints_rl/
+ml/logs/
+
+# ── Generated artifacts ──────────────────────────────────────────────────────
+# Benchmark results ARE committed so the dashboard's report panel works on a
+# fresh clone and the honesty gates have something to check. Regenerate with
+# `make bench`.
+experiments/runs/
+experiments/report_assets/
+!experiments/results/
 
 # Data artifacts
 datasets/raw/

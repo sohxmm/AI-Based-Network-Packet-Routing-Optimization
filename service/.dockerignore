@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+web/
+tests/
+docs/
+experiments/runs/
+ml/results/
+*.md
+!experiments/README.md
+.env
+.git/

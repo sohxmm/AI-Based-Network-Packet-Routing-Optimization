@@ -232,8 +232,19 @@ def evaluate_path(
 ) -> QoSEvaluation:
     """Score *path* under *profile* and check every hard constraint."""
     links = path_links(state, path)
-    if not links:
+    if links is None:
         return _INFEASIBLE
+    if not links:
+        # A zero-hop path (source == destination) traverses nothing, so it
+        # satisfies every constraint at zero cost.
+        return QoSEvaluation(
+            feasible=True,
+            score=0.0,
+            total_loss=0.0,
+            bottleneck_utilization=0.0,
+            hops=0,
+            violations=[],
+        )
 
     score = sum(qos_link_cost(link, profile) for link in links)
     total_loss = 1.0 - _product(1.0 - link.packet_loss_rate for link in links)

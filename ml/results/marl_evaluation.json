@@ -1,0 +1,44 @@
+{
+  "model": "regional_ctde_policies",
+  "architecture": "decentralized execution, centralized critic, independent learners",
+  "seed": 42,
+  "num_nodes": 25,
+  "regions": {
+    "0": 8,
+    "1": 7,
+    "2": 6,
+    "3": 4
+  },
+  "local_obs_dim": 113,
+  "global_obs_dim": 16,
+  "rounds": 2,
+  "timesteps_per_region": 50000,
+  "per_region": {
+    "0": {
+      "trained_mean_return": 70.48826647238324,
+      "random_mean_return": -5.010139022738971,
+      "improvement": 75.49840549512221,
+      "beats_random": true
+    },
+    "1": {
+      "trained_mean_return": 78.47917784908077,
+      "random_mean_return": 1.6616313215133356,
+      "improvement": 76.81754652756743,
+      "beats_random": true
+    },
+    "2": {
+      "trained_mean_return": 69.89885527242704,
+      "random_mean_return": -4.9212785470346265,
+      "improvement": 74.82013381946167,
+      "beats_random": true
+    },
+    "3": {
+      "trained_mean_return": 108.34620101235524,
+      "random_mean_return": 38.59679102669206,
+      "improvement": 69.74940998566318,
+      "beats_random": true
+    }
+  },
+  "regions_beating_random": 4,
+  "train_seconds": 589.5
+}

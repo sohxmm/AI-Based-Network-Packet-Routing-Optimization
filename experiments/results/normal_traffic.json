@@ -1,0 +1,271 @@
+{
+  "scenario": "normal_traffic",
+  "description": "Baseline. Simulator dynamics only, no injected stress.",
+  "generated_at": "2026-08-29T12:13:40.159520+00:00",
+  "replication": {
+    "n_runs": 15,
+    "n_steps": 40,
+    "m_pairs": 8,
+    "base_seed": 1000,
+    "unit_of_replication": "one independently seeded run",
+    "note": "Each algorithm runs its own closed-loop trajectory per seed with an identical topology, background traffic and demand schedule. Statistics are computed across runs, never across the autocorrelated decisions within one run."
+  },
+  "topology": {
+    "num_nodes": 25,
+    "num_edges": 50,
+    "avg_degree": 4.0,
+    "diameter": 5,
+    "is_connected": true
+  },
+  "scenario_config": {
+    "name": "normal_traffic",
+    "description": "Baseline. Simulator dynamics only, no injected stress.",
+    "num_nodes": 25,
+    "traffic_classes": [
+      "best_effort"
+    ],
+    "notes": "",
+    "prepared": {}
+  },
+  "models_loaded": {
+    "gnn": true,
+    "rl": true,
+    "multi_agent": false
+  },
+  "forecaster_loaded": true,
+  "algorithms": {
+    "dijkstra": {
+      "mean_latency": 56.72569256995355,
+      "p95_latency": 100.97740525891764,
+      "success_rate": 1.0,
+      "fallback_rate": 0.0,
+      "qos_satisfaction_rate": 1.0,
+      "mean_path_max_utilization": 0.5014176332701622,
+      "p95_path_max_utilization": 0.7305243945633441,
+      "diversity_index": 0.2741890758808968,
+      "mean_hops": 2.6985416666666664,
+      "mean_latency_ci": {
+        "mean": 56.72569256995355,
+        "std": 4.142272923064186,
+        "ci95_low": 54.629413241214344,
+        "ci95_high": 58.82197189869276,
+        "n": 15
+      },
+      "dijkstra_match_rate": 1.0
+    },
+    "bellman_ford": {
+      "mean_latency": 57.14766449920982,
+      "p95_latency": 100.72342770823145,
+      "success_rate": 1.0,
+      "fallback_rate": 0.0,
+      "qos_satisfaction_rate": 1.0,
+      "mean_path_max_utilization": 0.5032618252392417,
+      "p95_path_max_utilization": 0.7312907108624329,
+      "diversity_index": 0.27178429358459305,
+      "mean_hops": 2.714791666666667,
+      "mean_latency_ci": {
+        "mean": 57.14766449920982,
+        "std": 3.737667672576107,
+        "ci95_low": 55.256143678335924,
+        "ci95_high": 59.03918532008371,
+        "n": 15
+      },
+      "dijkstra_match_rate": 0.0010416666666666667,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": 0.4219719292562748,
+        "pct_diff": 0.743881493797371,
+        "wilcoxon_p_value": 0.5614013671875,
+        "wilcoxon_statistic": 49.0,
+        "cliffs_delta": 0.03111111111111111,
+        "effect_magnitude": "negligible",
+        "ci95_low": -0.640412752344035,
+        "ci95_high": 1.4799495058860757
+      }
+    },
+    "constrained": {
+      "mean_latency": 56.57406318777378,
+      "p95_latency": 100.93246459780991,
+      "success_rate": 1.0,
+      "fallback_rate": 0.0,
+      "qos_satisfaction_rate": 1.0,
+      "mean_path_max_utilization": 0.5041503704771134,
+      "p95_path_max_utilization": 0.7418147865049058,
+      "diversity_index": 0.25961308716574544,
+      "mean_hops": 2.6862500000000002,
+      "mean_latency_ci": {
+        "mean": 56.57406318777378,
+        "std": 4.3828117590342055,
+        "ci95_low": 54.35605441267305,
+        "ci95_high": 58.79207196287451,
+        "n": 15
+      },
+      "dijkstra_match_rate": 0.0008333333333333334,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": -0.15162938217975988,
+        "pct_diff": -0.2673028310633177,
+        "wilcoxon_p_value": 0.97796630859375,
+        "wilcoxon_statistic": 59.0,
+        "cliffs_delta": -0.0044444444444444444,
+        "effect_magnitude": "negligible",
+        "ci95_low": -1.4303182919843158,
+        "ci95_high": 1.0298500733225562
+      }
+    },
+    "aco": {
+      "mean_latency": 92.08372049795595,
+      "p95_latency": 199.050751013123,
+      "success_rate": 0.9997916666666666,
+      "fallback_rate": 0.00020833333333333335,
+      "qos_satisfaction_rate": 0.9997916666666666,
+      "mean_path_max_utilization": 0.5794550912836498,
+      "p95_path_max_utilization": 0.821028775461823,
+      "diversity_index": 0.7041079986152534,
+      "mean_hops": 4.241899817136885,
+      "mean_latency_ci": {
+        "mean": 92.08372049795595,
+        "std": 8.084131233388236,
+        "ci95_low": 87.99258562825482,
+        "ci95_high": 96.17485536765709,
+        "n": 15
+      },
+      "dijkstra_match_rate": 0.0004166666666666667,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": 35.358027928002386,
+        "pct_diff": 62.33159319191955,
+        "wilcoxon_p_value": 6.103515625e-05,
+        "wilcoxon_statistic": 0.0,
+        "cliffs_delta": 1.0,
+        "effect_magnitude": "large",
+        "ci95_low": 32.36107560415075,
+        "ci95_high": 38.35711302560262
+      }
+    },
+    "gnn": {
+      "mean_latency": 56.71476648715244,
+      "p95_latency": 101.48514722433853,
+      "success_rate": 1.0,
+      "fallback_rate": 0.0,
+      "qos_satisfaction_rate": 1.0,
+      "mean_path_max_utilization": 0.49411608586880945,
+      "p95_path_max_utilization": 0.7151130233747208,
+      "diversity_index": 0.2770636503517913,
+      "mean_hops": 2.679166666666667,
+      "mean_latency_ci": {
+        "mean": 56.71476648715244,
+        "std": 5.109611254245623,
+        "ci95_low": 54.12894641949623,
+        "ci95_high": 59.300586554808646,
+        "n": 15
+      },
+      "dijkstra_match_rate": 0.0008333333333333334,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": -0.010926082801113068,
+        "pct_diff": -0.019261259415456467,
+        "wilcoxon_p_value": 0.67877197265625,
+        "wilcoxon_statistic": 52.0,
+        "cliffs_delta": 0.04,
+        "effect_magnitude": "negligible",
+        "ci95_low": -1.155845229861212,
+        "ci95_high": 1.1796323078502384
+      }
+    },
+    "rl": {
+      "mean_latency": 56.734703264598714,
+      "p95_latency": 100.95846726202105,
+      "success_rate": 1.0,
+      "fallback_rate": 0.0,
+      "qos_satisfaction_rate": 1.0,
+      "mean_path_max_utilization": 0.4986825102879876,
+      "p95_path_max_utilization": 0.7259651416872006,
+      "diversity_index": 0.3001100064192756,
+      "mean_hops": 2.7025,
+      "mean_latency_ci": {
+        "mean": 56.734703264598714,
+        "std": 3.9708564125848254,
+        "ci95_low": 54.72517265913211,
+        "ci95_high": 58.744233870065315,
+        "n": 15
+      },
+      "dijkstra_match_rate": 0.0006250000000000001,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": 0.009010694645174056,
+        "pct_diff": 0.01588467982839021,
+        "wilcoxon_p_value": 0.803955078125,
+        "wilcoxon_statistic": 55.0,
+        "cliffs_delta": 0.04888888888888889,
+        "effect_magnitude": "negligible",
+        "ci95_low": -1.1739848349598736,
+        "ci95_high": 1.1429197609755053
+      }
+    },
+    "multi_agent": {
+      "mean_latency": 57.60978054908476,
+      "p95_latency": 100.76157860636798,
+      "success_rate": 1.0,
+      "fallback_rate": 1.0,
+      "qos_satisfaction_rate": 1.0,
+      "mean_path_max_utilization": 0.5072543864931459,
+      "p95_path_max_utilization": 0.7360249661412048,
+      "diversity_index": 0.26762568175092827,
+      "mean_hops": 2.7333333333333334,
+      "mean_latency_ci": {
+        "mean": 57.60978054908476,
+        "std": 4.504175274570072,
+        "ci95_low": 55.330353361048374,
+        "ci95_high": 59.88920773712115,
+        "n": 15
+      },
+      "dijkstra_match_rate": 0.0022916666666666662,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": 0.8840879791312114,
+        "pct_diff": 1.5585318381806677,
+        "wilcoxon_p_value": 0.04791259765625,
+        "wilcoxon_statistic": 25.0,
+        "cliffs_delta": 0.16444444444444445,
+        "effect_magnitude": "small",
+        "ci95_low": -0.20962598165967128,
+        "ci95_high": 1.8017683702200618
+      }
+    },
+    "random_baseline": {
+      "mean_latency": 84.4008782490587,
+      "p95_latency": 136.31703701561437,
+      "success_rate": 1.0,
+      "fallback_rate": 0.0,
+      "qos_satisfaction_rate": 1.0,
+      "mean_path_max_utilization": 0.5614865809825207,
+      "p95_path_max_utilization": 0.7831348961140708,
+      "diversity_index": 0.8612517312794536,
+      "mean_hops": 3.7977083333333335,
+      "mean_latency_ci": {
+        "mean": 84.4008782490587,
+        "std": 5.533427913928953,
+        "ci95_low": 81.6005773590688,
+        "ci95_high": 87.20117913904862,
+        "n": 15
+      },
+      "dijkstra_match_rate": 0.0010416666666666667,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": 27.67518567910515,
+        "pct_diff": 48.787744010311364,
+        "wilcoxon_p_value": 6.103515625e-05,
+        "wilcoxon_statistic": 0.0,
+        "cliffs_delta": 1.0,
+        "effect_magnitude": "large",
+        "ci95_low": 26.40227600909249,
+        "ci95_high": 29.117675487602114
+      }
+    }
+  },
+  "warnings": [
+    "multi_agent: 100% of decisions came from the heuristic fallback, not a trained model. This row is a heuristic, not multi_agent."
+  ],
+  "runtime_seconds": 176.4
+}

@@ -1,0 +1,17 @@
+line-length = 100
+target-version = "py311"
+exclude = ["web", "experiments/runs", "ml/checkpoints"]
+
+[lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "PL"]
+ignore = [
+    "E501",     # line length is handled by the formatter
+    "PLR0913",  # research code legitimately takes many hyperparameters
+    "PLR0915",  # training loops are long by nature
+    "PLR2004",  # magic numbers are readable in numeric code
+    "PLR0912",  # branchy scenario/dispatch code
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["PLR2004", "S101"]
+"ml/training/*" = ["PLR0915"]

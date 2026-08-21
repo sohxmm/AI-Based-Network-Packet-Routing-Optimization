@@ -10,9 +10,9 @@ from pathlib import Path
 if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from router.aco import AntColonyRouter
-from router.dijkstra import find_route as dijkstra_route
-from simulator.network_sim import NetworkSimulator
+from routing.heuristic.aco import AntColonyRouter
+from routing.classical.dijkstra import find_route as dijkstra_route
+from core.simulator import NetworkSimulator
 
 
 def test_30_random_pairs_all_succeed() -> None:
@@ -34,7 +34,7 @@ def test_30_random_pairs_all_succeed() -> None:
     success_count = 0
     for _ in range(30):
         src, dst = rng.sample(state.nodes, 2)
-        decision = aco.find_path(state, src, dst)
+        decision = aco.find_route(state, src, dst)
         if decision.success:
             success_count += 1
 
@@ -54,7 +54,7 @@ def test_same_source_and_destination() -> None:
     node = state.nodes[0]
     aco = AntColonyRouter(n_ants=5, n_iterations=5)
 
-    decision = aco.find_path(state, node, node)
+    decision = aco.find_route(state, node, node)
 
     print(f"  ✓ path={decision.path}, cost={decision.total_latency}")
     assert decision.success, "src == dst should succeed trivially"
@@ -86,7 +86,7 @@ def test_unreachable_after_failures() -> None:
     other_node = next(n for n in state.nodes if n != isolated_node)
     aco = AntColonyRouter(n_ants=10, n_iterations=10)
 
-    decision = aco.find_path(state, isolated_node, other_node)
+    decision = aco.find_route(state, isolated_node, other_node)
 
     print(f"  ✓ success={decision.success} (expected False)")
     assert decision.success is False, "Isolated node should be unreachable"
@@ -105,7 +105,7 @@ def test_invalid_node_names() -> None:
     real_node = state.nodes[0]
     aco = AntColonyRouter()
 
-    decision = aco.find_path(state, "R999", real_node)
+    decision = aco.find_route(state, "R999", real_node)
 
     print(f"  ✓ success={decision.success} (expected False)")
     assert decision.success is False, "Unknown source node should fail gracefully"
@@ -123,7 +123,7 @@ def test_pheromone_reset_clears_history() -> None:
     aco = AntColonyRouter(n_ants=5, n_iterations=5)
 
     src, dst = state.nodes[0], state.nodes[3]
-    aco.find_path(state, src, dst)
+    aco.find_route(state, src, dst)
 
     assert len(aco.pheromones) > 0, "Pheromones should be populated after a search"
     aco.reset_pheromones()
@@ -172,7 +172,7 @@ def test_aco_vs_dijkstra_comparison() -> None:
         aco.reset_pheromones()
 
         a_start = time.time()
-        aco_decision = aco.find_path(state, src, dst)
+        aco_decision = aco.find_route(state, src, dst)
         aco_elapsed += time.time() - a_start
         
         if not (dijkstra_decision.success and aco_decision.success):
@@ -220,7 +220,7 @@ def test_performance_under_load() -> None:
     start = time.time()
     for _ in range(20):
         src, dst = rng.sample(state.nodes, 2)
-        aco.find_path(state, src, dst)
+        aco.find_route(state, src, dst)
     elapsed = time.time() - start
 
     print(f"  ✓ 20 lookups in {elapsed:.3f}s ({20 / elapsed:.1f} lookups/sec)")

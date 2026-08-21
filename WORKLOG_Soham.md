@@ -1,6 +1,6 @@
 # Internship Work Log
 
-Total hours: 175.5
+Total hours: 182
 
 ## 09/06/2026
 
@@ -540,3 +540,22 @@ Tasks:
 
 Status:
 - The dashboard now shows the argument, not just the network
+
+## 21/08/2026
+
+Hours: 6.5
+
+Tasks:
+- Made the test suite installable. There was no pytest in any requirements file, no `pytest.ini`, no `conftest.py`, and two of the eleven "test files" contained zero test functions
+- Wrote `test_train_serve_parity.py`, asserting the environment and the router build byte-identical observations
+- Wrote `test_marl_locality.py`, which perturbs only the global observation block and asserts the actor's action distribution does not move while the critic's value estimate does. That is the decentralised-execution claim, verified rather than described
+- Wrote `test_closed_loop.py`, including that round-robin over three paths keeps the worst link cooler than saturating one path. That load-balancing property is what the whole project is about and was previously unmeasurable
+- Added honesty gates for degeneracy, silent fallbacks, structurally constant metrics, p-values of exactly zero, missing effect sizes and ring topologies
+- Wrote `scripts/verify_claims.py`, which cross-checks documented numbers against committed artifacts. This is the check that would have caught the model filename mismatch on day one
+- Added CI with four jobs, including a Docker smoke test that asserts the models really loaded
+- Two-stage Dockerfile with no compiler in the runtime image and a non-root user; made `env_file` optional so a fresh clone actually starts. Three services declared `env_file: .env`, `.env` is gitignored, and nothing created it, so the very first command anyone ran failed
+- Moved pgAdmin behind a `dev` profile, because a tool with a default password should not appear on a port by accident, and added a Makefile so first run is one command
+- A legacy test caught a real bug during the port: routing a node to itself returned infinity instead of 0, because a one-node path has no links and "no links" was being conflated with "invalid"
+
+Status:
+- `git clone && make up` works from nothing, and the guardrails now enforce rather than merely report

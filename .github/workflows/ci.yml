@@ -1,0 +1,97 @@
+# Documentation/12_KNOWN_ISSUES.md admitted CI was missing. Every one of the
+# audit's four headline findings would have been caught by one of these jobs:
+# the docker job catches the fresh-clone failure and the model-path mismatch,
+# and the honesty gates catch documentation drifting away from the artifacts.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: pip }
+      - run: pip install ruff==0.4.4
+      - run: ruff check .
+
+  backend-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: routinguser
+          POSTGRES_PASSWORD: routingpass
+          POSTGRES_DB: routing_db
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+        ports: ["5432:5432"]
+    env:
+      DATABASE_URL: postgresql+asyncpg://routinguser:routingpass@localhost:5432/routing_db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: pip }
+      - run: pip install -r service/requirements-dev.txt
+      - name: Unit and integration tests
+        run: python -m pytest -m "not slow" --cov=core --cov=routing --cov=service --cov-report=term-missing
+      - name: Honesty gates
+        run: python -m pytest tests/honesty -v
+      - name: Documented claims must match the committed artifacts
+        run: python scripts/verify_claims.py
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npm run lint
+        working-directory: web
+      - run: npm run test
+        working-directory: web
+      - run: npm run build
+        working-directory: web
+
+  docker:
+    # The important job: it is the one that would have caught a reviewer's very
+    # first command failing.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fresh clone must start with no manual steps
+        run: docker compose build
+      - run: docker compose up -d
+      - name: Wait for the backend to report healthy
+        run: |
+          for i in $(seq 1 40); do
+            if curl -fs localhost:8000/health | grep -q '"status"'; then exit 0; fi
+            sleep 5
+          done
+          docker compose logs
+          exit 1
+      - name: Smoke test the API
+        run: |
+          curl -fs localhost:8000/network/state \
+            | python -c "import sys,json; d=json.load(sys.stdin); assert len(d['nodes'])==25, d"
+          curl -fs -X POST localhost:8000/network/route \
+            -H 'Content-Type: application/json' \
+            -d '{"source":"R1","destination":"R10","algorithm":"dijkstra"}' \
+            | grep -q '"success": *true'
+      - name: Trained models must actually be loaded, not silently absent
+        run: |
+          curl -fs localhost:8000/health/models \
+            | python -c "import sys,json; d=json.load(sys.stdin); assert d['status']=='ok', d"
+      - run: docker compose down -v

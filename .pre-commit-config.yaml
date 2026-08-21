@@ -1,0 +1,22 @@
+# check-added-large-files at 500 KB would have prevented training artifacts
+# from being committed by accident in the first place. The model checkpoints
+# this project *does* ship are listed explicitly below.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.4
+    hooks:
+      - id: ruff
+        args: [--fix]
+        exclude: ^web/
+      - id: ruff-format
+        exclude: ^web/
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=800"]
+        exclude: ^ml/checkpoints/

@@ -7,11 +7,11 @@ import time
 if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from simulator.network_sim import NetworkSimulator
-from router.dijkstra import find_route as dijkstra_route
-from router.bellman_ford import find_route as bellman_ford_route
-from router.aco import AntColonyRouter
-from router.rl_agent import RLRouter
+from core.simulator import NetworkSimulator
+from routing.classical.dijkstra import find_route as dijkstra_route
+from routing.classical.bellman_ford import find_route as bellman_ford_route
+from routing.heuristic.aco import AntColonyRouter
+from routing.learned.rl import RLRouter
 
 def test_500_steps_no_crash() -> None:
     """
@@ -100,8 +100,8 @@ def test_all_routers_under_load() -> None:
         # Call all 4 routers
         d1 = dijkstra_route(state, src, dst)
         d2 = bellman_ford_route(state, src, dst)
-        d3 = aco.find_path(state, src, dst)
-        d4 = rl.predict(state, src, dst)
+        d3 = aco.find_route(state, src, dst)
+        d4 = rl.find_route(state, src, dst)
         
         if all([d1.success, d2.success, d3.success, d4.success]):
             success_count += 1
