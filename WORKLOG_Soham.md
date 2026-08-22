@@ -1,6 +1,6 @@
 # Internship Work Log
 
-Total hours: 182
+Total hours: 186.5
 
 ## 09/06/2026
 
@@ -559,3 +559,17 @@ Tasks:
 
 Status:
 - `git clone && make up` works from nothing, and the guardrails now enforce rather than merely report
+
+## 22/08/2026
+
+Hours: 4.5
+
+Tasks:
+- Fixed the multi-agent checkpoint reload. Stable-Baselines3 rebuilds both the policy and value feature extractors from identical kwargs, so `PPO.load` reconstructed the actor with the critic's 129-dimensional input and failed with a size mismatch
+- Solved it by encoding the asymmetry in a policy class rather than applying it after construction, so it is part of what gets serialized. Verified the save/load roundtrip keeps the actor local-only and the critic global
+- Fixed the partition, which was derived from a freshly built 25-node simulator regardless of the topology being served. On the 100-node scenario every node above R25 mapped to region -1 and forced a fallback, which is where the measured `fallback_rate = 0.75` came from
+- Fixed the degeneracy metric. Under per-algorithm closed-loop trajectories the networks legitimately diverge by step two, so comparing chosen paths measures trajectory divergence rather than algorithmic similarity — measured that way even Bellman-Ford scored 0.00 against Dijkstra, which is impossible for two exact solvers. It now runs as a separate shared-state open-loop probe
+- Wrote four model cards reporting use-matched metrics and known failure modes, plus an architecture diagram
+
+Status:
+- The decentralised-execution claim is supported by the code rather than asserted in a docstring
