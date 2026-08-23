@@ -18,7 +18,12 @@ function PathCostBreakdown({ result, baseline, trafficClass }) {
 
   const color = algorithmColor(result.algorithm);
   const hops = result.hops ?? [];
-  const qos = result.diagnostics?.qos;
+  // `result.qos` is the server's own evaluation of the returned path and is
+  // present for every algorithm. `diagnostics.qos` is whatever the router chose
+  // to report about itself, and only the constraint-aware ones report anything
+  // — so reading it first left Dijkstra and Bellman-Ford, the two
+  // constraint-blind routers, as the only rows with no feasibility verdict.
+  const qos = result.qos ?? result.diagnostics?.qos;
 
   const delta =
     baseline?.total_latency != null && result.total_latency != null
