@@ -1,7 +1,7 @@
 {
   "scenario": "high_congestion",
   "description": "30% of links carry a sustained elevated load. Set once, not accumulated, so hot links stay hot without the whole network saturating.",
-  "generated_at": "2026-08-29T12:16:13.383997+00:00",
+  "generated_at": "2026-08-29T12:36:39.342020+00:00",
   "replication": {
     "n_runs": 15,
     "n_steps": 40,
@@ -33,7 +33,7 @@
   "models_loaded": {
     "gnn": true,
     "rl": true,
-    "multi_agent": false
+    "multi_agent": true
   },
   "forecaster_loaded": true,
   "algorithms": {
@@ -73,7 +73,7 @@
         "ci95_high": 73.6599052559334,
         "n": 15
       },
-      "dijkstra_match_rate": 0.0010416666666666667,
+      "dijkstra_match_rate": 1.0,
       "comparison_vs_dijkstra": {
         "n_runs": 15,
         "mean_diff": 0.6224671560973785,
@@ -103,7 +103,7 @@
         "ci95_high": 73.23287964318322,
         "n": 15
       },
-      "dijkstra_match_rate": 0.00125,
+      "dijkstra_match_rate": 1.0,
       "comparison_vs_dijkstra": {
         "n_runs": 15,
         "mean_diff": -0.11373613565825688,
@@ -133,7 +133,7 @@
         "ci95_high": 120.10127736537484,
         "n": 15
       },
-      "dijkstra_match_rate": 0.00020833333333333335,
+      "dijkstra_match_rate": 0.43,
       "comparison_vs_dijkstra": {
         "n_runs": 15,
         "mean_diff": 43.36865077868173,
@@ -163,7 +163,7 @@
         "ci95_high": 74.97732801134244,
         "n": 15
       },
-      "dijkstra_match_rate": 0.0010416666666666667,
+      "dijkstra_match_rate": 0.965,
       "comparison_vs_dijkstra": {
         "n_runs": 15,
         "mean_diff": 0.882257263213279,
@@ -193,7 +193,7 @@
         "ci95_high": 74.83315688071593,
         "n": 15
       },
-      "dijkstra_match_rate": 0.0004166666666666667,
+      "dijkstra_match_rate": 0.665,
       "comparison_vs_dijkstra": {
         "n_runs": 15,
         "mean_diff": 1.2620263077402958,
@@ -207,33 +207,33 @@
       }
     },
     "multi_agent": {
-      "mean_latency": 71.42067194251999,
-      "p95_latency": 129.4571317831666,
+      "mean_latency": 115.49218032741958,
+      "p95_latency": 277.6842879501695,
       "success_rate": 1.0,
-      "fallback_rate": 1.0,
+      "fallback_rate": 0.03125,
       "qos_satisfaction_rate": 1.0,
-      "mean_path_max_utilization": 0.6294843090399725,
-      "p95_path_max_utilization": 0.939496138113385,
-      "diversity_index": 0.27216863735814595,
-      "mean_hops": 2.8060416666666663,
+      "mean_path_max_utilization": 0.6968433187681436,
+      "p95_path_max_utilization": 0.969783673092783,
+      "diversity_index": 0.40416704766294154,
+      "mean_hops": 3.7050000000000005,
       "mean_latency_ci": {
-        "mean": 71.42067194251999,
-        "std": 6.894460503859694,
-        "ci95_low": 67.93159352941562,
-        "ci95_high": 74.90975035562435,
+        "mean": 115.49218032741958,
+        "std": 13.654154842110207,
+        "ci95_low": 108.58222459090896,
+        "ci95_high": 122.40213606393019,
         "n": 15
       },
-      "dijkstra_match_rate": 0.0018749999999999997,
+      "dijkstra_match_rate": 0.485,
       "comparison_vs_dijkstra": {
         "n_runs": 15,
-        "mean_diff": 1.238852507747491,
-        "pct_diff": 1.7652043189032587,
-        "wilcoxon_p_value": 0.063720703125,
-        "wilcoxon_statistic": 27.0,
-        "cliffs_delta": 0.18222222222222223,
-        "effect_magnitude": "small",
-        "ci95_low": -0.08341992809295126,
-        "ci95_high": 2.523957810157905
+        "mean_diff": 45.310360892647076,
+        "pct_diff": 64.56139390167685,
+        "wilcoxon_p_value": 6.103515625e-05,
+        "wilcoxon_statistic": 0.0,
+        "cliffs_delta": 1.0,
+        "effect_magnitude": "large",
+        "ci95_low": 40.31402323843624,
+        "ci95_high": 51.16950615141345
       }
     },
     "random_baseline": {
@@ -253,7 +253,7 @@
         "ci95_high": 107.60491772065676,
         "n": 15
       },
-      "dijkstra_match_rate": 0.0008333333333333334,
+      "dijkstra_match_rate": 0.185,
       "comparison_vs_dijkstra": {
         "n_runs": 15,
         "mean_diff": 33.531517447506815,
@@ -268,7 +268,7 @@
     }
   },
   "warnings": [
-    "multi_agent: 100% of decisions came from the heuristic fallback, not a trained model. This row is a heuristic, not multi_agent."
+    "gnn: chooses the same path as Dijkstra 96% of the time, so it is degenerate and adds no information."
   ],
-  "runtime_seconds": 152.6
+  "runtime_seconds": 171.1
 }
