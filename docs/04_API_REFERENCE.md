@@ -128,15 +128,16 @@ curl -X POST http://localhost:8000/network/route \
   "avg_utilization": 0.194,
   "success": true,
   "is_fallback": false,
+  "qos": {
+    "traffic_class": "emergency",
+    "feasible": true,
+    "score": 0.7509,
+    "total_loss": 0.0,
+    "bottleneck_utilization": 0.2357,
+    "hops": 4,
+    "violations": []
+  },
   "diagnostics": {
-    "qos": {
-      "feasible": true,
-      "score": 0.7509,
-      "total_loss": 0.0,
-      "bottleneck_utilization": 0.2357,
-      "hops": 4,
-      "violations": []
-    },
     "candidates_considered": 5
   },
   "hops": [
@@ -154,10 +155,18 @@ algorithm — a missing checkpoint, an observation-width mismatch, a failed forw
 pass. Always check it before attributing a result to a model. This is why it
 lives in the domain model rather than being an API afterthought.
 
-**`diagnostics.qos`.** The chosen path evaluated against the traffic class's hard
+**`qos`.** The chosen path evaluated against the traffic class's hard
 constraints. `feasible: false` with a populated `violations` array means the
 router returned the least-infeasible path it could find rather than failing —
 which is usually what an operator wants, but you have to be told.
+
+This block is computed **by the endpoint** from the returned path, not read out
+of the router's self-report, so it is present for every algorithm on the same
+terms. `diagnostics` is what a router chose to say about itself, and only the
+constraint-aware routers say anything — reading the verdict from there left
+`dijkstra` and `bellman_ford` as the only rows without one, which are exactly
+the two constraint-*blind* routers whose feasibility a reader most needs to see.
+Feasibility is a property of (path, state, profile), so the server derives it.
 
 **`hops`.** The per-link cost breakdown, so the total is auditable rather than
 asserted. `cost = base_latency * (1 + 4 * utilization^2)`; the numbers above
