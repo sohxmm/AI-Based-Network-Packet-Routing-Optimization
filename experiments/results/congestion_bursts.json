@@ -1,0 +1,273 @@
+{
+  "scenario": "congestion_bursts",
+  "description": "Three links burst simultaneously for 3-10 steps with p=0.1 per step. The old version congested one link at a time, which is trivially routable around.",
+  "generated_at": "2026-08-29T12:44:47.968352+00:00",
+  "replication": {
+    "n_runs": 15,
+    "n_steps": 40,
+    "m_pairs": 8,
+    "base_seed": 1000,
+    "unit_of_replication": "one independently seeded run",
+    "note": "Each algorithm runs its own closed-loop trajectory per seed with an identical topology, background traffic and demand schedule. Statistics are computed across runs, never across the autocorrelated decisions within one run."
+  },
+  "topology": {
+    "num_nodes": 25,
+    "num_edges": 50,
+    "avg_degree": 4.0,
+    "diameter": 5,
+    "is_connected": true
+  },
+  "scenario_config": {
+    "name": "congestion_bursts",
+    "description": "Three links burst simultaneously for 3-10 steps with p=0.1 per step. The old version congested one link at a time, which is trivially routable around.",
+    "num_nodes": 25,
+    "traffic_classes": [
+      "best_effort"
+    ],
+    "notes": "",
+    "prepared": {
+      "burst_links": 3
+    }
+  },
+  "models_loaded": {
+    "gnn": true,
+    "rl": true,
+    "multi_agent": true
+  },
+  "forecaster_loaded": true,
+  "algorithms": {
+    "dijkstra": {
+      "mean_latency": 58.04207730634529,
+      "p95_latency": 104.3311077088786,
+      "success_rate": 1.0,
+      "fallback_rate": 0.0,
+      "qos_satisfaction_rate": 1.0,
+      "mean_path_max_utilization": 0.5132679675832209,
+      "p95_path_max_utilization": 0.7537790342314723,
+      "diversity_index": 0.27847118075161664,
+      "mean_hops": 2.703958333333334,
+      "mean_latency_ci": {
+        "mean": 58.04207730634529,
+        "std": 4.496526720184632,
+        "ci95_low": 55.76652082087986,
+        "ci95_high": 60.31763379181072,
+        "n": 15
+      },
+      "dijkstra_match_rate": 1.0
+    },
+    "bellman_ford": {
+      "mean_latency": 58.53880145002953,
+      "p95_latency": 104.09356339773417,
+      "success_rate": 1.0,
+      "fallback_rate": 0.0,
+      "qos_satisfaction_rate": 1.0,
+      "mean_path_max_utilization": 0.5168932765103854,
+      "p95_path_max_utilization": 0.761655942091101,
+      "diversity_index": 0.26212725049140917,
+      "mean_hops": 2.722916666666667,
+      "mean_latency_ci": {
+        "mean": 58.53880145002953,
+        "std": 4.098171054294226,
+        "ci95_low": 56.4648407462526,
+        "ci95_high": 60.612762153806464,
+        "n": 15
+      },
+      "dijkstra_match_rate": 1.0,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": 0.49672414368423196,
+        "pct_diff": 0.8558000794191578,
+        "wilcoxon_p_value": 0.52447509765625,
+        "wilcoxon_statistic": 48.0,
+        "cliffs_delta": 0.04,
+        "effect_magnitude": "negligible",
+        "ci95_low": -0.6221796011705092,
+        "ci95_high": 1.6564502988075729
+      }
+    },
+    "constrained": {
+      "mean_latency": 57.90094665190511,
+      "p95_latency": 104.02165418457871,
+      "success_rate": 1.0,
+      "fallback_rate": 0.0,
+      "qos_satisfaction_rate": 1.0,
+      "mean_path_max_utilization": 0.515649514962859,
+      "p95_path_max_utilization": 0.7565738914490672,
+      "diversity_index": 0.24383478488684693,
+      "mean_hops": 2.695208333333333,
+      "mean_latency_ci": {
+        "mean": 57.90094665190511,
+        "std": 4.664042079825805,
+        "ci95_low": 55.54061569788479,
+        "ci95_high": 60.26127760592543,
+        "n": 15
+      },
+      "dijkstra_match_rate": 1.0,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": -0.14113065444019385,
+        "pct_diff": -0.24315231464805812,
+        "wilcoxon_p_value": 0.97796630859375,
+        "wilcoxon_statistic": 59.0,
+        "cliffs_delta": -0.013333333333333334,
+        "effect_magnitude": "negligible",
+        "ci95_low": -1.4434013555938463,
+        "ci95_high": 1.071181123917339
+      }
+    },
+    "aco": {
+      "mean_latency": 93.45707044191057,
+      "p95_latency": 200.83387084253124,
+      "success_rate": 0.9997916666666666,
+      "fallback_rate": 0.00020833333333333335,
+      "qos_satisfaction_rate": 0.9997916666666666,
+      "mean_path_max_utilization": 0.5940931352395059,
+      "p95_path_max_utilization": 0.8469049159502777,
+      "diversity_index": 0.7065641498510191,
+      "mean_hops": 4.224318181818181,
+      "mean_latency_ci": {
+        "mean": 93.45707044191057,
+        "std": 10.188885993143236,
+        "ci95_low": 88.3007827015782,
+        "ci95_high": 98.61335818224295,
+        "n": 15
+      },
+      "dijkstra_match_rate": 0.475,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": 35.41499313556527,
+        "pct_diff": 61.01606761702448,
+        "wilcoxon_p_value": 6.103515625e-05,
+        "wilcoxon_statistic": 0.0,
+        "cliffs_delta": 1.0,
+        "effect_magnitude": "large",
+        "ci95_low": 31.408563714047737,
+        "ci95_high": 39.40813643584956
+      }
+    },
+    "gnn": {
+      "mean_latency": 58.02433556478843,
+      "p95_latency": 104.14798113215362,
+      "success_rate": 1.0,
+      "fallback_rate": 0.0,
+      "qos_satisfaction_rate": 1.0,
+      "mean_path_max_utilization": 0.5039965801049409,
+      "p95_path_max_utilization": 0.7340200452139137,
+      "diversity_index": 0.2912374742762397,
+      "mean_hops": 2.688541666666667,
+      "mean_latency_ci": {
+        "mean": 58.02433556478843,
+        "std": 5.475688191537013,
+        "ci95_low": 55.253255005941696,
+        "ci95_high": 60.795416123635164,
+        "n": 15
+      },
+      "dijkstra_match_rate": 0.97,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": -0.017741741556882573,
+        "pct_diff": -0.03056703409018582,
+        "wilcoxon_p_value": 0.7197265625,
+        "wilcoxon_statistic": 53.0,
+        "cliffs_delta": 0.03111111111111111,
+        "effect_magnitude": "negligible",
+        "ci95_low": -1.1222099278698228,
+        "ci95_high": 1.1187593684113148
+      }
+    },
+    "rl": {
+      "mean_latency": 58.14748591134115,
+      "p95_latency": 104.81621322636047,
+      "success_rate": 1.0,
+      "fallback_rate": 0.0,
+      "qos_satisfaction_rate": 1.0,
+      "mean_path_max_utilization": 0.5095413325292173,
+      "p95_path_max_utilization": 0.7428287008988395,
+      "diversity_index": 0.30001894286452263,
+      "mean_hops": 2.7104166666666663,
+      "mean_latency_ci": {
+        "mean": 58.14748591134115,
+        "std": 4.32086948707939,
+        "ci95_low": 55.960824250900835,
+        "ci95_high": 60.334147571781465,
+        "n": 15
+      },
+      "dijkstra_match_rate": 0.87,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": 0.1054086049958523,
+        "pct_diff": 0.18160722339331023,
+        "wilcoxon_p_value": 0.93408203125,
+        "wilcoxon_statistic": 58.0,
+        "cliffs_delta": 0.04888888888888889,
+        "effect_magnitude": "negligible",
+        "ci95_low": -1.138940423579127,
+        "ci95_high": 1.2731259700315913
+      }
+    },
+    "multi_agent": {
+      "mean_latency": 93.08737972340813,
+      "p95_latency": 227.19224456159836,
+      "success_rate": 1.0,
+      "fallback_rate": 0.02875,
+      "qos_satisfaction_rate": 1.0,
+      "mean_path_max_utilization": 0.569286778211699,
+      "p95_path_max_utilization": 0.8393301558096068,
+      "diversity_index": 0.45549666796783567,
+      "mean_hops": 3.68625,
+      "mean_latency_ci": {
+        "mean": 93.08737972340813,
+        "std": 11.615732509678596,
+        "ci95_low": 87.20900801771405,
+        "ci95_high": 98.96575142910221,
+        "n": 15
+      },
+      "dijkstra_match_rate": 0.575,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": 35.04530241706284,
+        "pct_diff": 60.379131904763184,
+        "wilcoxon_p_value": 6.103515625e-05,
+        "wilcoxon_statistic": 0.0,
+        "cliffs_delta": 1.0,
+        "effect_magnitude": "large",
+        "ci95_low": 31.103391367303793,
+        "ci95_high": 40.043474754132596
+      }
+    },
+    "random_baseline": {
+      "mean_latency": 86.32159264177612,
+      "p95_latency": 140.5419198037349,
+      "success_rate": 1.0,
+      "fallback_rate": 0.0,
+      "qos_satisfaction_rate": 1.0,
+      "mean_path_max_utilization": 0.5777997300924798,
+      "p95_path_max_utilization": 0.8271040159769829,
+      "diversity_index": 0.8577866717355104,
+      "mean_hops": 3.801666666666667,
+      "mean_latency_ci": {
+        "mean": 86.32159264177612,
+        "std": 5.968936021427835,
+        "ci95_low": 83.30089424051529,
+        "ci95_high": 89.34229104303695,
+        "n": 15
+      },
+      "dijkstra_match_rate": 0.185,
+      "comparison_vs_dijkstra": {
+        "n_runs": 15,
+        "mean_diff": 28.279515335430816,
+        "pct_diff": 48.722438354802364,
+        "wilcoxon_p_value": 6.103515625e-05,
+        "wilcoxon_statistic": 0.0,
+        "cliffs_delta": 1.0,
+        "effect_magnitude": "large",
+        "ci95_low": 26.985669879269107,
+        "ci95_high": 29.735963976084086
+      }
+    }
+  },
+  "warnings": [
+    "gnn: chooses the same path as Dijkstra 97% of the time, so it is degenerate and adds no information."
+  ],
+  "runtime_seconds": 167.4
+}
