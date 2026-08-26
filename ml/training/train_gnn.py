@@ -4,7 +4,7 @@ Run from the repository root::
 
     python -m ml.training.train_gnn
 
-Five changes from the previous version, each fixing something the audit found:
+Five changes from the previous version, each fixing a real defect:
 
 1. **Ranking loss, not MSE.** The model's output value is never used — only
    ``argmin`` is. Regression accuracy on the cost was therefore irrelevant while
@@ -37,11 +37,10 @@ import json
 import logging
 import random
 import time
-from pathlib import Path
 
 import numpy as np
 import torch
-import torch.optim as optim
+from torch import optim
 
 from core.paths import candidate_paths
 from core.qos import ALL_CLASSES, QOS_PROFILES, evaluate_path

@@ -1,6 +1,6 @@
 """SQLAlchemy models.
 
-Two changes from the audited schema:
+Two changes from the previous schema:
 
 * ``PacketLog`` is gone. It had zero references anywhere in the codebase —
   infrastructure for its own sake, which reads as padding.
@@ -17,9 +17,9 @@ that looks live. It is now written when ``--persist`` is passed and readable via
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Float, Integer, JSON, String
+from sqlalchemy import JSON, Boolean, Column, DateTime, Float, Integer, String
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
@@ -27,7 +27,7 @@ Base = declarative_base()
 
 def _utcnow() -> datetime:
     """Timezone-aware UTC now. ``datetime.utcnow()`` is deprecated."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class RoutingEvent(Base):

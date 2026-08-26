@@ -35,12 +35,12 @@ import time
 
 import numpy as np
 import torch
-import torch.nn as nn
 from gymnasium import spaces
 from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.policies import ActorCriticPolicy
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
+from torch import nn
 
 from core.simulator import NetworkSimulator
 from ml.environments.partition import partition_network

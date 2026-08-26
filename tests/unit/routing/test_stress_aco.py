@@ -10,9 +10,9 @@ from pathlib import Path
 if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from routing.heuristic.aco import AntColonyRouter
-from routing.classical.dijkstra import find_route as dijkstra_route
 from core.simulator import NetworkSimulator
+from routing.classical.dijkstra import find_route as dijkstra_route
+from routing.heuristic.aco import AntColonyRouter
 
 
 def test_30_random_pairs_all_succeed() -> None:
@@ -76,7 +76,7 @@ def test_unreachable_after_failures() -> None:
     neighbors = [
         (link.source, link.target)
         for link in state.links
-        if link.source == isolated_node or link.target == isolated_node
+        if isolated_node in (link.source, link.target)
     ]
 
     for src, dst in neighbors:

@@ -80,6 +80,28 @@ def check_reported_ml_numbers() -> None:
             fail(f"{name} has no '{key}' field; the report format has drifted.")
 
 
+#: A document may quote a refuted figure — that is how you write down what was
+#: wrong — but only under an explicit marker. An HTML comment rather than a
+#: phrase, because a phrase-based escape hatch ("previously", "was") is one an
+#: author trips over by accident, and this one has to be deliberate. The marker
+#: applies from where it appears until the next markdown heading.
+REFUTED_MARKER = "<!-- verify-claims: refuted -->"
+
+
+def _refuted_spans(text: str) -> list[tuple[int, int]]:
+    """Character ranges in which a refuted figure may legitimately be quoted."""
+    spans: list[tuple[int, int]] = []
+    for match in re.finditer(re.escape(REFUTED_MARKER), text):
+        heading = re.search(r"^#{1,6} ", text[match.end() :], re.MULTILINE)
+        end = match.end() + heading.start() if heading else len(text)
+        spans.append((match.start(), end))
+    return spans
+
+
+def _inside_refuted_block(spans: list[tuple[int, int]], index: int) -> bool:
+    return any(start <= index < end for start, end in spans)
+
+
 def check_no_unsupported_reward_figures() -> None:
     """Reward figures in the docs must fall inside the measured range."""
     evaluation = ML_RESULTS / "rl_evaluation.json"
@@ -96,18 +118,24 @@ def check_no_unsupported_reward_figures() -> None:
     banned = {"-45.81", "-61", "-77"}
     for document in DOCS.glob("*.md"):
         text = document.read_text(encoding="utf-8")
+        spans = _refuted_spans(text)
         for value in banned:
             # Only flag it if presented as a reward, not merely as a digit.
-            if re.search(rf"reward[^.\n]*{re.escape(value)}", text, re.IGNORECASE):
+            for match in re.finditer(
+                rf"reward[^.\n]*{re.escape(value)}", text, re.IGNORECASE
+            ):
+                if _inside_refuted_block(spans, match.start()):
+                    continue
                 fail(
                     f"{document.name} quotes reward {value}, which is not "
                     f"supported by ml/results/rl_evaluation.json "
                     f"(measured means span {min(means):.1f} to {max(means):.1f})."
                 )
+                break
 
         for match in re.finditer(r"mean (?:episode )?reward[^.\n]*?(-\d+\.?\d*)", text, re.I):
             quoted = float(match.group(1))
-            if not (low <= quoted <= high):
+            if not (low <= quoted <= high) and not _inside_refuted_block(spans, match.start()):
                 fail(
                     f"{document.name} quotes a mean reward of {quoted}, outside "
                     f"the measured range [{low:.1f}, {high:.1f}]."

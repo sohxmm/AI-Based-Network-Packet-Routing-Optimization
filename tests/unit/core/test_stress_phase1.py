@@ -1,17 +1,18 @@
 """Stress test the network simulator before Phase 2 wires it to FastAPI."""
 
 import sys
-from pathlib import Path
 import time
+from pathlib import Path
 
 if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core.simulator import NetworkSimulator
-from routing.classical.dijkstra import find_route as dijkstra_route
 from routing.classical.bellman_ford import find_route as bellman_ford_route
+from routing.classical.dijkstra import find_route as dijkstra_route
 from routing.heuristic.aco import AntColonyRouter
 from routing.learned.rl import RLRouter
+
 
 def test_500_steps_no_crash() -> None:
     """
@@ -134,7 +135,7 @@ def test_reproducibility_with_seed() -> None:
     state2 = sim2.get_state()
     
     # Compare link utilizations
-    for link1, link2 in zip(state1.links, state2.links):
+    for link1, link2 in zip(state1.links, state2.links, strict=True):
         assert link1.source == link2.source
         assert link1.target == link2.target
         assert abs(link1.utilization - link2.utilization) < 1e-10, \

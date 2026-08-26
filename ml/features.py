@@ -1,6 +1,6 @@
 """Feature builders shared by training and inference.
 
-Every train/serve skew bug in the audit came from the same root cause: the
+Every train/serve skew bug came from the same root cause: the
 training script and the router each built their own inputs. Three different
 candidate-path generators existed, and the RL observation was constructed twice
 from two different code paths. Action index *k* therefore meant a different path
@@ -56,7 +56,7 @@ def build_graph_tensors(
     for link in state.links:
         degrees[node_to_idx[link.source]] += 1
         degrees[node_to_idx[link.target]] += 1
-    max_degree = max(1, max(degrees)) if degrees else 1
+    max_degree = max(1, *degrees) if degrees else 1
 
     x = torch.tensor(
         [
@@ -180,7 +180,7 @@ def build_observation(
     (source, destination) pair while the environment resampled the routing task
     every step, so the meaning of "action 2" changed completely between steps.
     That is not a partially observable MDP, it is an unobservable one, and it
-    fully explains the flat learning curve the audit measured (r-squared 0.001).
+    fully explains the flat learning curve we measured (r-squared 0.001).
 
     Three blocks, all in [0, 1]:
 

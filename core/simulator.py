@@ -1,7 +1,7 @@
 """NetworkSimulator — a closed-loop, small-world packet routing testbed.
 
-Three properties of this simulator were changed as a direct result of the
-technical audit, and each one invalidates a previously-published result:
+Three properties of this simulator were changed during the rebuild, and
+each one invalidates a previously-published result:
 
 1. **The loop is closed.** Routing decisions now add load to the links they
    traverse (:meth:`register_flow`). Previously utilization was a random walk
@@ -341,7 +341,7 @@ class NetworkSimulator:
                 dst,
                 weight=lambda u, v, _: self.get_edge_weight(u, v),
             )
-            return [path for _, path in zip(range(k), paths)]
+            return [path for _, path in zip(range(k), paths, strict=False)]
         except (nx.NetworkXNoPath, nx.NodeNotFound):
             return []
 

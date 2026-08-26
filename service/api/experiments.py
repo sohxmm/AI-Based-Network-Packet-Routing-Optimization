@@ -20,7 +20,7 @@ import asyncio
 import functools
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
@@ -104,7 +104,7 @@ class ExperimentConfig(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def validate_total_decisions(self) -> "ExperimentConfig":
+    def validate_total_decisions(self) -> ExperimentConfig:
         total = self.steps * self.pairs_per_step * self.runs * len(self.algorithms)
         if total > MAX_TOTAL_DECISIONS * len(self.algorithms):
             budget = MAX_TOTAL_DECISIONS
@@ -167,7 +167,7 @@ async def create_experiment(
         "result": None,
         "error": None,
         "config": config.model_dump(),
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
     background_tasks.add_task(_run_experiment, job_id, config)
     return {"job_id": job_id}

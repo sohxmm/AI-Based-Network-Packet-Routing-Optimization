@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from math import isfinite
 
 from core.models import RoutingDecision
@@ -30,7 +30,7 @@ def build_routing_event(
     qos = decision.diagnostics.get("qos") if decision.diagnostics else None
     return RoutingEvent(
         id=str(uuid.uuid4()),
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         source=decision.source,
         destination=decision.destination,
         algorithm=decision.algorithm,

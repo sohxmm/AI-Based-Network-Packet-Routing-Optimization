@@ -111,7 +111,7 @@ def candidate_paths(
     if not nx.has_path(graph, src, dst):
         return []
     generator = nx.shortest_simple_paths(graph, src, dst, weight="w" if weighted else None)
-    return [path for _, path in zip(range(k), generator)]
+    return [path for _, path in zip(range(k), generator, strict=False)]
 
 
 def failed_decision(src: str, dst: str, algorithm: str) -> RoutingDecision:

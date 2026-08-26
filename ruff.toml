@@ -10,8 +10,27 @@ ignore = [
     "PLR0915",  # training loops are long by nature
     "PLR2004",  # magic numbers are readable in numeric code
     "PLR0912",  # branchy scenario/dispatch code
+    # `import` inside a function. This is a deliberate, load-bearing pattern
+    # here, not laziness: torch and stable-baselines3 are imported the first
+    # time a learned router actually needs them, so `import routing` costs
+    # milliseconds instead of seconds and the package stays importable on a
+    # machine with no ML stack installed at all. The benchmark harness, the
+    # honesty gates and the API all rely on that. Deferred imports also break
+    # the core -> routing -> ml -> experiments cycle in the two places the
+    # layering genuinely needs to be crossed.
+    "PLC0415",
+    # `global` in the same lazy-import helpers, caching the resolved module so
+    # the import cost is paid once rather than per call.
+    "PLW0603",
+    # `class TrafficClass(str, Enum)` rather than `StrEnum`. Both work on 3.11,
+    # and the explicit `str` mixin is what Pydantic v1 and v2 both serialise
+    # identically; switching would be churn for no behavioural gain.
+    "UP042",
 ]
 
 [lint.per-file-ignores]
 "tests/*" = ["PLR2004", "S101"]
 "ml/training/*" = ["PLR0915"]
+# `Depends()` in a parameter default is FastAPI's documented idiom, and the
+# whole dependency-injection system is built on it.
+"service/api/*" = ["B008"]

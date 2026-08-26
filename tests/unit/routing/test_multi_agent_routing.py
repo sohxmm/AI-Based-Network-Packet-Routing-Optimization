@@ -14,17 +14,14 @@ single-agent, which is the whole point of decentralising with a shared reward.
 from __future__ import annotations
 
 import random
-import sys
-from pathlib import Path
 
 import numpy as np
 
-
-from core.simulator import NetworkSimulator
 from core.models import NetworkState
-from routing.learned.rl import RLRouter
-from routing.learned.multi_agent import MultiAgentRouter
+from core.simulator import NetworkSimulator
 from ml.environments.partition import partition_network
+from routing.learned.multi_agent import MultiAgentRouter
+from routing.learned.rl import RLRouter
 
 
 def _utilization_stats(state: NetworkState):

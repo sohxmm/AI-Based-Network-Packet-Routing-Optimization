@@ -12,8 +12,8 @@ if __name__ == "__main__":
 
 import networkx as nx
 
-from routing.classical.dijkstra import find_route
 from core.simulator import NetworkSimulator
+from routing.classical.dijkstra import find_route
 
 
 def test_100_random_pairs_all_succeed() -> None:
@@ -73,7 +73,7 @@ def test_unreachable_after_failures() -> None:
     neighbors = [
         (link.source, link.target)
         for link in state.links
-        if link.source == isolated_node or link.target == isolated_node
+        if isolated_node in (link.source, link.target)
     ]
 
     for src, dst in neighbors:
