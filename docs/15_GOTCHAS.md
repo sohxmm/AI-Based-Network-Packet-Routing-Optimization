@@ -77,6 +77,14 @@ is the correct behaviour. The router detects the width mismatch, logs a warning
 naming the retrain command, and falls back — flagged as a fallback. It does not
 reshape into nonsense.
 
+**The same mechanism fires on a topology the PPO agent was not trained on.** Its
+observation is `links × 4 + nodes × 2 + K_PATHS × 6 + QOS_FEATS` — 286 for 25
+nodes and 50 links — so a 100-node graph, or one with links removed, does not
+fit. `fallback_rate` is 1.00 in both such scenarios. The GNN has no such problem:
+message passing does not depend on node count, so the same weights run on 25 and
+100 nodes with zero fallbacks. If you need one checkpoint to survive a change of
+topology size, encode the graph structurally.
+
 ---
 
 ## The simulator
@@ -130,6 +138,21 @@ than the time taken to find it.
 for the dashboard's Known Limitations panel and regex-matches on the literal
 string `**Limitation**:`. Delete or reword that and the panel goes empty, which is
 how it was for the whole life of the previous version.
+
+**Never read the headline latency table without reading `fallback_rate`.** Under
+`link_failures_persistent` the `rl` row is 63.4 ms against Dijkstra's 64.0 — a
+*better* number — and 100% of those decisions came from the fallback heuristic,
+because the PPO agent's fixed-width observation does not fit a topology with
+links removed. The report and the final document dagger any row above 20%
+fallback and exclude it from the row's best, but the raw JSON does not, and
+"the RL agent beat Dijkstra under link failures" is a sentence one glance at the
+raw table would produce.
+
+**One aggregate QoS number hides the result.** `best_effort` has no hard
+constraints, so every algorithm scores 100% on it and the average pulls
+everything together: 15 points of spread overall versus 31 in the emergency
+class. Read `qos_satisfaction_rate__<class>`, tightest class first, not
+`qos_satisfaction_rate`.
 
 ---
 
