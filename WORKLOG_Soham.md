@@ -1,6 +1,6 @@
 # Internship Work Log
 
-Total hours: 197.5
+Total hours: 203
 
 ## 09/06/2026
 
@@ -607,3 +607,19 @@ Tasks:
 
 Status:
 - Every published number is now generated from an artifact rather than typed by hand
+
+## 26/08/2026
+
+Hours: 5.5
+
+Tasks:
+- Caught the headline table about to crown a heuristic. Under persistent link failures the RL row scores better than Dijkstra with a 100% fallback rate, because the agent's fixed-width observation does not fit a topology with links removed. Both the generated report and the final report now mark any row above 20% fallback and exclude it from the row's best
+- Lowered the runner's fallback warning threshold from 50% to 20% to match, because at 38% the number is already a blend rather than the model's
+- Relaxed the fallback honesty gate from "must not happen" to "must be declared", the same shape as the degeneracy gate. The agent genuinely cannot fit a 100-node observation, and failing CI for a correctly handled limitation is failing CI for the router working
+- Fixed six stale tests that asserted a schema the rebuild had replaced, including one that submitted a slow job and then asserted it was unfinished, which made it a test of scheduling luck rather than of the 409 contract
+- Added public accessors for which regions have a trained policy and which fall back
+- Cleaned ruff to zero across the repository, documenting the deliberate lazy-import and FastAPI `Depends` patterns in `ruff.toml` rather than "fixing" them
+- Rewrote the ML, setup and algorithms documentation against the actual code
+
+Status:
+- 121 Python tests and 18 frontend tests passing, both linters clean
