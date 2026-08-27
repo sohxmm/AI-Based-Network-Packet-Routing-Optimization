@@ -1,246 +1,182 @@
 # Frontend Dashboard
 
-The dashboard is a React 18 single-page application built with Vite, styled with Tailwind CSS 3, and visualized using D3.js and Recharts.
+React 18 + Vite + Tailwind, with D3 for the topology and Recharts for the
+comparison charts. Source lives in `web/`.
+
+```bash
+cd web
+npm install
+npm run dev        # http://localhost:5173
+npm run test       # Vitest + Testing Library
+npm run lint       # ESLint, --max-warnings 0
+npm run build      # production bundle
+```
 
 ---
 
-## 1. Technology Stack
+## 1. What the dashboard is for
 
-| Technology       | Version | Purpose                                 |
-|-----------------|---------|------------------------------------------|
-| React           | 18.3    | UI framework                             |
-| Vite            | 8.x     | Build tool and dev server                |
-| Tailwind CSS    | 3.4     | Utility-first CSS framework              |
-| D3.js           | 7.9     | Force-directed topology graph            |
-| Recharts        | 2.12    | Bar charts and data visualization        |
-| Lucide React    | 0.468   | Icon library                             |
+It is not a demo surface. Its job is to make three things visible that are
+otherwise buried in JSON:
+
+1. **Whether the AI is actually running.** Every learned router can fall back to
+   a heuristic, and before this revision that was invisible.
+2. **Why one algorithm chose a different path from another.** A latency number
+   tells you *that* they differ; the divergence view tells you *where*.
+3. **What the benchmark's own guardrails are saying about its results.**
 
 ---
 
-## 2. Dashboard Layout
+## 2. Layout
 
-The dashboard uses a responsive 3-column CSS Grid layout:
+Four tabs (`web/src/App.jsx`):
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Header: Title, Step Count, Connection Status, Theme Selector   │
-├──────────┬──────────────────────────────┬───────────────────────┤
-│          │                              │                       │
-│  LEFT    │         CENTER               │      RIGHT            │
-│  COLUMN  │         COLUMN               │      COLUMN           │
-│  (250px) │      (flexible)              │      (320px)          │
-│          │                              │                       │
-│ Metrics  │  TopologyGraph               │  RouteComparison      │
-│  Panel   │  (D3 force graph)            │  (form + table +      │
-│          │                              │   bar chart)           │
-│ Left     │  CongestionHeatmap           │                       │
-│  Panel   │  (Recharts bar)              │  ControlPanel         │
-│ (queues) │                              │  (step/reset/failure) │
-│          │                              │                       │
-│          │                              │  RightPanel           │
-│          │                              │  (topology stats)     │
-│          │                              │                       │
-└──────────┴──────────────────────────────┴───────────────────────┘
-```
+| Tab | Contents |
+|---|---|
+| **Live network** | Topology graph, congestion heatmap, metrics, simulator controls, network source panel, failover panel |
+| **Path divergence** | Side-by-side path comparison with per-hop cost breakdown |
+| **Benchmark** | Committed scenario results, statistics, warnings |
+| **Lab** | Experiment builder — configure and run a sandbox benchmark |
+
+Four themes: GitHub Dark, Nord, Dracula, Solarized Light.
+
+Four, not ten. The previous ten-theme engine worked and demonstrated real CSS
+architecture, but ten themes cost roughly what fixing the model-loading bug cost,
+and the project needed the second one more. Four keep the engine and the
+light/dark handling honest without reading as padding. `isDark` drives the chart
+palettes, which are **validated separately for each mode** rather than flipped
+automatically — an automatic inversion produces colours that pass in neither.
 
 ---
 
 ## 3. Components
 
-### 3.1 TopologyGraph (`components/TopologyGraph.jsx`)
+### 3.1 Honesty surfaces
 
-**D3 force-directed network graph** showing all routers and links.
+These exist to make the system's self-reported problems unmissable.
 
-Features:
-- **Two-phase rendering**: Force simulation built once; only colors update per tick
-- **Live color updates**: Link color reflects utilization (green → yellow → red)
-- **Path highlighting**: Best route highlighted in cyan when comparison results exist
-- **Drag-to-pin**: Users can drag nodes; they stay pinned after release
-- **Congestion indicators**: Node circles turn red when adjacent links exceed 80% utilization
-- **CSS transitions**: Smooth 0.6s color transitions for link and node updates
+| Component | What it shows |
+|---|---|
+| `ModelStatusBanner` | Which model artifacts are present and which actually loaded. Two separate facts, because a file that exists but failed to load is the interesting case. |
+| `WarningsCallout` | The `warnings` block from a results file, rendered **above** the results table, not below it. |
+| `GuardrailBadge` | Marks a decision the safety guardrails would have rejected. |
 
-### 3.2 CongestionHeatmap (`components/CongestionHeatmap.jsx`)
+A user should never have to notice a caveat themselves. If a row was produced by
+a fallback heuristic, the dashboard says so next to the number.
 
-**Horizontal bar chart** (Recharts) showing the top 12 most utilized links.
+### 3.2 Network views
 
-- Sorted by utilization (highest first)
-- Updates in real-time as the simulator runs
-- Uses theme-aware axis colors and tooltip styling
-- X-axis shows percentage (0–100%)
+| Component | Notes |
+|---|---|
+| `TopologyGraph` | D3 force-directed. Two-phase render: the simulation is created once and only *updated* on state change, so nodes do not jump every tick. Node positions persist across ticks. |
+| `CongestionHeatmap` | Recharts bar chart of per-link utilisation. |
+| `MetricsPanel` / `LeftPanel` / `RightPanel` | Summary cards, queue sizes, topology stats. |
+| `ControlPanel` | Step, reset, inject failure, restore link. |
+| `NetworkSourcePanel` | Switch between simulator, trace replay and live probing. Renders the live-mode limitation inline rather than in a tooltip. |
+| `FailoverPanel` | Watched flows and reroute events as they happen. |
 
-### 3.3 RouteComparison (`components/RouteComparison.jsx`)
+### 3.3 Path analysis
 
-**Algorithm comparison panel** with three sub-sections:
+| Component | Notes |
+|---|---|
+| `PathDivergenceView` | Two algorithms' paths side by side, with the divergence point highlighted. |
+| `PathCostBreakdown` | Per-hop `base_latency`, `utilization` and `cost`, so the total is auditable rather than asserted. The numbers multiply out to the reported total. |
 
-1. **Route Form**: Source/destination dropdowns + "Compare All" button
-2. **Results Table**: Algorithm name, latency, and path (click to expand long paths)
-3. **Latency Bar Chart**: Visual comparison of algorithm latencies
+### 3.4 Benchmark
 
-The best algorithm row is highlighted with an accent background.
+`web/src/components/benchmark/`:
 
-### 3.4 ControlPanel (`components/ControlPanel.jsx`)
+| Component | Notes |
+|---|---|
+| `ScenarioSelector` | Pick a committed scenario. |
+| `WarningsCallout` | Guardrail findings, first. |
+| `AlgorithmMetricsTable` | Latency, p95, success, fallback, QoS satisfaction, diversity, match rate. |
+| `LatencyChart` | Horizontal bars with error bars from the bootstrap CI. |
+| `StatisticalSummary` | Cliff's delta, magnitude, CI and Wilcoxon p per algorithm. |
 
-**Simulator control buttons**:
-
-| Button          | Action                                        |
-|-----------------|-----------------------------------------------|
-| Step +1         | Advance simulator by 1 step                   |
-| Step +10        | Advance simulator by 10 steps (sequential)    |
-| Reset           | Reset simulator to initial state (step 0)     |
-| Link dropdown   | Select a link for failure/restore operations   |
-| Inject Failure  | Remove the selected link from the topology     |
-| Restore Link    | Restore a previously failed link               |
-
-### 3.5 MetricsPanel (`components/MetricsPanel.jsx`)
-
-**Four metric cards** showing:
-
-| Metric           | Source                                      |
-|------------------|---------------------------------------------|
-| Best Latency     | Lowest latency from the latest comparison   |
-| Packet Delivery  | Estimated from average packet loss rate     |
-| Congested Links  | Count of links with utilization ≥ 0.7       |
-| Best Algorithm   | Algorithm name with lowest latency          |
-
-### 3.6 LeftPanel (`components/LeftPanel.jsx`)
-
-**Queue size leaderboard** showing the top 5 links by queue size. Provides a quick view of which links are building up queued packets.
-
-### 3.7 RightPanel (`components/RightPanel.jsx`)
-
-**Global topology statistics**:
-- Total routers (nodes)
-- Active links
-- Average link capacity
-- Count of congested links (utilization ≥ 0.7)
-
-### 3.8 Benchmark & Experiment Components
-
-Newly added for Phase 8 benchmarking:
-- **`ExperimentBuilder.jsx`**: Interface to define and launch custom simulation scenarios, selecting specific topologies, traffic patterns, and algorithms to compare (including `gnn`, `marl`, and `predictive` modes).
-- **`BenchmarkResultView.jsx`**: Full-screen or dedicated view to analyze benchmark results across multiple scenarios. Shows aggregate statistics, effect size percentages compared to Dijkstra, and standard deviation/variance.
-- **`BenchmarkReport.jsx`**: Child component for rendering individual benchmark summary reports.
-- **`GuardrailBadge.jsx`**: UI element to highlight safety boundaries or algorithmic limitations (e.g., fallback triggers).
+The statistics are shown next to the latency, never instead of it. A bar chart
+without a confidence interval invites the reader to believe a 0.4 ms difference
+is real.
 
 ---
 
-## 4. Custom Hooks
+## 4. Hooks
 
-### 4.1 `useNetworkStream` (`hooks/useNetworkStream.js`)
+All server state comes through three hooks. No component fetches directly.
 
-Manages the WebSocket connection to `ws://localhost:8000/ws/stream`.
+| Hook | Responsibility |
+|---|---|
+| `useNetworkStream` | WebSocket connection with reconnect and backoff; exposes `networkState`, `failoverEvents`, `isConnected` |
+| `useRouteRequest` | REST calls for routing and comparison |
+| `useModelHealth` | Polls `/health/models` for the status banner |
 
-**Returns:**
-
-| Property          | Type          | Description                           |
-|-------------------|---------------|---------------------------------------|
-| `networkState`    | `object|null` | Latest network state from WebSocket   |
-| `lastRoutingEvent`| `object|null` | Most recent routing event             |
-| `isConnected`     | `boolean`     | Whether WebSocket is connected        |
-| `error`           | `string|null` | Error message if connection failed    |
-
-**Features:**
-- Automatic reconnection with exponential backoff (1s → 30s)
-- Clean teardown on component unmount
-- Protocol auto-detection (`ws:` / `wss:` based on page protocol)
-
-### 4.2 `useRouteRequest` (`hooks/useRouteRequest.js`)
-
-Manages REST API calls to the backend.
-
-**Returns:**
-
-| Property             | Type       | Description                           |
-|----------------------|------------|---------------------------------------|
-| `compareRoutes`      | `function` | Send route comparison request         |
-| `postSimulatorAction`| `function` | Send simulator control action         |
-| `isLoading`          | `boolean`  | Whether a request is in-flight        |
-| `error`              | `string|null` | Error message from last request    |
+Errors go through `utils/apiError.js`, which turns a FastAPI `detail` into
+something a user can act on instead of `[object Object]`.
 
 ---
 
-## 5. Theming Engine
+## 5. Colour
 
-The dashboard supports **10 color themes** via CSS custom properties defined in `index.css`.
+`web/src/utils/colorScales.js` is the single source of chart colour, and it is
+organised by the **job** each colour does rather than by preference.
 
-### Available Themes
+**Categorical (identity).** Eight hues, one per algorithm, assigned in fixed
+order and never cycled. Colour follows the algorithm, not its rank, so filtering
+the comparison never repaints the survivors — a filter that recolours the
+remaining series makes two charts of the same data unreadable side by side.
 
-| Theme               | Type   | Description                            |
-|---------------------|--------|----------------------------------------|
-| `solarized-light`   | Light  | Classic Solarized light palette        |
-| `solarized-dark`    | Dark   | Classic Solarized dark palette         |
-| `dracula`           | Dark   | Popular Dracula color scheme (default) |
-| `monokai`           | Dark   | Monokai Pro-inspired                   |
-| `nord`              | Dark   | Arctic, blue-tinted palette            |
-| `tokyo-night`       | Dark   | VSCode Tokyo Night inspired            |
-| `one-dark`          | Dark   | Atom One Dark inspired                 |
-| `gruvbox`           | Dark   | Gruvbox dark theme                     |
-| `synthwave`         | Dark   | Retro neon synthwave                   |
-| `github-dark`       | Dark   | GitHub dark mode inspired              |
+The set is validated: adjacent pairs clear the colour-vision-deficiency
+separation floor and the lightness/chroma bands in both light and dark mode.
+Three light-mode slots sit below 3:1 contrast on a pale surface, which is exactly
+why **every chart also carries direct value labels and a table view**. Identity is
+never conveyed by colour alone.
 
-### How Theming Works
+**Sequential (magnitude).** Link utilisation uses one ramp, green to red through
+amber, at fixed breakpoints (0, 0.4, 0.7, 1.0). One hue family, light to dark —
+never a rainbow.
 
-1. Each theme defines CSS variables under a `.theme-<name>` class
-2. `App.jsx` swaps the class on `<html>` when the user selects a theme
-3. Components use Tailwind utility classes that reference CSS variables:
-   - `bg-app-panel` → `var(--color-panel)`
-   - `text-app-text` → `var(--color-text-main)`
-   - `border-app-border` → `var(--color-border)`
-   - `bg-app-accent` → `var(--color-accent)`
+**Status.** Reserved for good/warning/serious/critical and never reused as
+"series 4". Status always ships with an icon and a label, not colour alone.
 
-### CSS Variable Map
-
-```css
---color-bg:           /* Page background */
---color-panel:        /* Card/panel background */
---color-input-bg:     /* Input and table header background */
---color-border:       /* Border color */
---color-text-main:    /* Primary text */
---color-text-muted:   /* Secondary/muted text */
---color-accent:       /* Accent buttons, highlights */
---color-accent-text:  /* Text on accent backgrounds */
-```
+There are no dual-axis charts anywhere in the dashboard. Two measures of
+different scale get two charts.
 
 ---
 
-## 6. Build & Development
+## 6. Configuration
 
-### Development Server
+`web/src/config.js` reads `VITE_API_URL` at build time and defaults to
+same-origin, so the nginx image works with no configuration and the dev server
+works via the Vite proxy.
 
-```bash
-cd frontend
-npm run dev
-# → http://localhost:5173
-```
+The previous version hardcoded `http://localhost:8000` in
+`useRouteRequest.js` and hardcoded port 8000 in the WebSocket URL, which meant
+any non-localhost deployment required a source edit.
 
-### Production Build
+---
 
-```bash
-cd frontend
-npm run build
-# Output → frontend/dist/
-```
-
-### Linting
+## 7. Testing
 
 ```bash
-npm run lint
+npm run test           # 18 tests
 ```
 
-### Vite Proxy Configuration
+Vitest + Testing Library, with `web/src/test/setup.js` providing jest-dom
+matchers and a `ResizeObserver` stub (jsdom has none, and Recharts needs one).
 
-In development, the Vite dev server proxies `/api` requests to the backend:
+`vite.config.js` sets `esbuild: { jsx: "automatic" }`. Without it every test
+failed with "React is not defined", because the components use the automatic JSX
+runtime and Vitest's transform did not.
 
-```javascript
-// vite.config.js
-server: {
-  proxy: {
-    "/api": {
-      target: "http://localhost:8000",
-      changeOrigin: true
-    }
-  }
-}
+---
+
+## 8. Linting
+
+```bash
+npm run lint           # exits 0 at --max-warnings 0
 ```
 
-> **Note**: The frontend currently connects directly to `http://localhost:8000` for REST calls and `ws://localhost:8000/ws/stream` for WebSocket. The proxy is configured but not actively used by the hooks.
+ESLint with a `.eslintrc.cjs` legacy config. The previous setup mixed flat-config
+packages with a legacy config file, so `npm run lint` did not run at all — it
+errored out before checking anything, which reads as "no lint errors" in a
+terminal you are not watching closely.
