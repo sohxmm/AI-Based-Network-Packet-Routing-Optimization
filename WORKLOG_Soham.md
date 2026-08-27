@@ -1,6 +1,6 @@
 # Internship Work Log
 
-Total hours: 203
+Total hours: 207
 
 ## 09/06/2026
 
@@ -623,3 +623,17 @@ Tasks:
 
 Status:
 - 121 Python tests and 18 frontend tests passing, both linters clean
+
+## 27/08/2026
+
+Hours: 4.0
+
+Tasks:
+- Rewrote the architecture document around the layering and the one-way dependency direction, and the data-flow section around the closed loop
+- Rewrote the API reference against the live OpenAPI schema, documenting only the endpoints whose semantics are not obvious from their signature and pointing at `/docs` for the rest, so a hand-copied schema cannot go stale
+- Rewrote the frontend and configuration documents, and corrected the AR(1) coefficient, which several documents had recorded as 0.7 when the code uses 0.85
+- Rewrote the testing document against the suite as it actually stands, and tightened the CI health gate: it grepped for `"status"`, which passes on `"degraded"`, exactly the state a container in trouble reports. It now waits for `"status": "ok"`
+- Rewrote the deployment document and the roadmap, marking explicitly which items were considered and scoped out rather than overlooked
+
+Status:
+- Every numbered document now describes the code that exists
