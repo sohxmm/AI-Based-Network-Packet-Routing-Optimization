@@ -134,7 +134,7 @@ async def route_packet(request: RouteRequest) -> dict[str, object]:
     await save_routing_events(
         [build_routing_event(decision, state.step_count, request.traffic_class)]
     )
-    payload = decision_to_dict(decision, state)
+    payload = decision_to_dict(decision, state, get_profile(request.traffic_class))
     payload["forecast_used"] = forecast_used
     await manager.broadcast({"type": "routing_event", "payload": payload})
     return payload
@@ -147,6 +147,7 @@ async def compare_routes(request: RouteCompareRequest) -> dict[str, object]:
     validate_nodes(state, request.source, request.destination)
     algorithms = request.algorithms or DEFAULT_ALGORITHMS
 
+    profile = get_profile(request.traffic_class)
     forecast = forecast_state(state) if request.use_forecast else None
     decisions = []
     results = []
@@ -156,7 +157,7 @@ async def compare_routes(request: RouteCompareRequest) -> dict[str, object]:
             algorithm, state, request.source, request.destination, request.traffic_class
         )
         decisions.append(decision)
-        results.append(decision_to_dict(decision, state))
+        results.append(decision_to_dict(decision, state, profile))
 
         # A predictive variant is only emitted when a forecast actually exists.
         # Emitting it unconditionally is how the benchmark ended up with two
@@ -165,7 +166,10 @@ async def compare_routes(request: RouteCompareRequest) -> dict[str, object]:
             predicted = run_algorithm(
                 algorithm, forecast, request.source, request.destination, request.traffic_class
             )
-            entry = decision_to_dict(predicted, state)
+            # Scored against the *real* state, not the forecast it routed on:
+            # the question is whether the predicted-optimal path is feasible in
+            # the network that actually exists.
+            entry = decision_to_dict(predicted, state, profile)
             entry["algorithm"] = f"{algorithm}_predictive"
             entry["forecast_used"] = True
             results.append(entry)
@@ -191,7 +195,6 @@ async def compare_routes(request: RouteCompareRequest) -> dict[str, object]:
     )
     await manager.broadcast({"type": "routing_comparison", "payload": results})
 
-    profile = get_profile(request.traffic_class)
     oracle_path, oracle_score, oracle_feasible = qos_oracle(
         state, request.source, request.destination, profile
     )

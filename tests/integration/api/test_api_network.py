@@ -1,7 +1,7 @@
 """API tests.
 
 ``api/routers/`` previously had zero test coverage. Every endpoint below either
-had a bug the audit found, or is new and needs pinning.
+had a bug we found, or is new and needs pinning.
 """
 
 from __future__ import annotations
@@ -101,6 +101,39 @@ class TestRouting:
         payload = response.json()
         assert [r["algorithm"] for r in payload["results"]] == ["dijkstra", "aco", "gnn"]
         assert "oracle" in payload
+
+    def test_every_algorithm_gets_a_qos_verdict_including_the_blind_ones(self, client):
+        """Feasibility is computed by the endpoint, not self-reported by routers.
+
+        The comparison view used to read the QoS block out of
+        ``decision.diagnostics``, which only the constraint-aware routers
+        populate. So every row carried a feasibility verdict except `dijkstra`
+        and `bellman_ford` — the two routers that are constraint-*blind*, and
+        therefore precisely the two whose feasibility a reader needs to see.
+        The whole argument for QoS-aware routing is that Dijkstra will return an
+        infeasible path; a view that cannot show that is arguing the point badly.
+        """
+        payload = client.post(
+            "/network/route/compare",
+            json={
+                "source": "R1",
+                "destination": "R14",
+                "traffic_class": "emergency",
+                "algorithms": ["dijkstra", "bellman_ford", "constrained", "gnn"],
+            },
+        ).json()
+
+        for result in payload["results"]:
+            qos = result.get("qos")
+            assert qos is not None, (
+                f"{result['algorithm']} has no QoS verdict. Feasibility is a "
+                f"property of (path, state, profile) and must not depend on "
+                f"whether the router chose to volunteer it."
+            )
+            assert qos["traffic_class"] == "emergency"
+            assert isinstance(qos["feasible"], bool)
+            assert isinstance(qos["violations"], list)
+            assert qos["hops"] == len(result["path"]) - 1
 
     def test_predictive_variants_only_appear_when_a_forecast_exists(self, client):
         """Emitting them unconditionally is what produced duplicate columns."""
