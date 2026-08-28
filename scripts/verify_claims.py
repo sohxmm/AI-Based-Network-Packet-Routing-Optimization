@@ -215,9 +215,43 @@ def check_results_match_the_current_schema() -> None:
 #: Words that mark a reference as describing the past rather than the present.
 HISTORICAL_FRAMING = re.compile(
     r"was|were|previously|used to|old|before|formerly|historical|no longer|"
-    r"original|refuted|the audit",
+    r"original|refuted|removed|dropped|deleted|is gone|stopped existing",
     re.IGNORECASE,
 )
+
+
+#: Suffixes that make a backticked identifier read as a table name rather than a
+#: variable. Narrow on purpose: the check should miss a table before it flags a
+#: function.
+TABLE_SUFFIXES = ("_logs", "_events", "_snapshots", "_metrics")
+
+
+def check_documented_tables_exist() -> None:
+    """Every table name the docs describe must be declared in the ORM.
+
+    ``packet_logs`` was documented with a full column table, drawn into the
+    architecture diagram, and listed in the roadmap as "exists but is never
+    populated". It did not exist: the refactor dropped it, correctly, because
+    nothing had ever written to it. Three documents went on describing it.
+
+    A table is a thing with a name, so this is exactly the kind of claim a script
+    can check and a reader cannot.
+    """
+    from service.db.models import Base
+
+    declared = set(Base.metadata.tables)
+    for document in DOCS.glob("*.md"):
+        paragraphs = re.split(r"\n\s*\n", document.read_text(encoding="utf-8"))
+        for paragraph in paragraphs:
+            if HISTORICAL_FRAMING.search(paragraph):
+                continue
+            for name in re.findall(r"`([a-z_]+)`", paragraph):
+                if name.endswith(TABLE_SUFFIXES) and name not in declared:
+                    fail(
+                        f"{document.name} refers to a database table "
+                        f"'{name}' that is not declared in "
+                        f"service/db/models.py (declared: {sorted(declared)})."
+                    )
 
 
 def check_no_stale_module_references() -> None:
@@ -259,6 +293,7 @@ def main() -> int:
         check_scenarios_have_results,
         check_topologies_are_not_degenerate,
         check_results_match_the_current_schema,
+        check_documented_tables_exist,
         check_no_stale_module_references,
     )
 

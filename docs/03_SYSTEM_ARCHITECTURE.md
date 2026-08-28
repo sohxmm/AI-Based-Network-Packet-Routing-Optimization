@@ -72,7 +72,7 @@ definition of the cost.
 |   NetworkSource           |       |   routing_events          |
 |    - SimulatedSource      |       |   network_snapshots       |
 |    - TraceReplaySource    |       |   algorithm_metrics       |
-|    - LiveProbeSource      |       |   packet_logs             |
+|    - LiveProbeSource      |       |                           |
 |                           |       |                           |
 |   8 routers, 4 models     |       |   Alembic migrations      |
 +---------------------------+       +---------------------------+
@@ -281,16 +281,19 @@ file.
 
 ## 8. Persistence
 
-Four tables (`routing_events`, `network_snapshots`, `algorithm_metrics`,
-`packet_logs`), full detail in [`05_DATABASE_SCHEMA.md`](05_DATABASE_SCHEMA.md).
+Three tables (`routing_events`, `network_snapshots`, `algorithm_metrics`), full
+detail in [`05_DATABASE_SCHEMA.md`](05_DATABASE_SCHEMA.md).
 
 Schema changes go through **Alembic**. `create_all` remains only as a fallback
 for tests and throwaway databases: it can CREATE but never ALTER, so on an
 existing deployment adding a column silently does nothing.
 
-`network_snapshots` grows at one row per second — 86,400 a day — so
-`prune_snapshots()` runs every 10 minutes and trims by age. There is no
-size-based cap; see `12_KNOWN_ISSUES.md` §4.5.
+`network_snapshots` used to grow at one row per second — 86,400 a day, roughly
+860 MB — with no retention at all. Two changes: only one tick in ten is
+persisted (`SNAPSHOT_EVERY_N_STEPS = 10`), and `prune_snapshots()` runs every 10
+minutes keeping the newest `MAX_SNAPSHOTS = 10_000` rows, about 28 hours of
+history. The cap is on **row count**, not age, so a faster tick rate shortens
+the window rather than growing the table.
 
 ---
 
